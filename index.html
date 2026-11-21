@@ -608,8 +608,8 @@ const TBL={transactions:"sarisafe_transactions",shifts:"sarisafe_shifts"};
 const DEFAULT_CLOUD={
   url:"https://lcfdxountexmtmnhuynw.supabase.co",
   key:"sb_publishable_QJtZjV-w2YgPZPN7LryR7g_KvhB6ZRb",
-  email:"YOUR_STAFF_EMAIL",
-  password:"YOUR_STAFF_PASSWORD"
+  email:"xyllannel@gmail.com",
+  password:"Neyaxayen123"
 };
 const cloudCfg=async()=>(await getSet("cloud"))||(DEFAULT_CLOUD.email&&DEFAULT_CLOUD.password&&DEFAULT_CLOUD.email!=="YOUR_STAFF_EMAIL"?{...DEFAULT_CLOUD}:null);
 function setCloud(s){const c=$("#cloudChip"),m={ok:"☁ Synced",syncing:"☁ Syncing…",offline:"☁ Offline – will sync later",error:"☁ Sync error"};if(s==="off"){c.hidden=true;return}c.hidden=false;c.textContent=m[s];c.title=S.err||""}
