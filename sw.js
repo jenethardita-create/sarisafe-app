@@ -1,6 +1,6 @@
 // SariSafe service worker: caches the app shell so it opens with no internet.
 // Bump CACHE when you change any file so devices pick up the update.
-const CACHE = "sarisafe-v14";
+const CACHE = "sarisafe-v15";
 const SHELL = ["./", "./index.html", "./styles.css", "./manifest.json", "./icon.svg"];
 self.addEventListener("install", e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(SHELL)));

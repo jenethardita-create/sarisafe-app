@@ -119,7 +119,7 @@ const calcFee=a=>{const t=S.tiers.find(x=>a>=x.min&&a<=x.max);return t?t.fee:nul
 const eff=t=>t.type==="Cash-In"?{c:t.amount+t.fee,w:-t.amount}:{c:-t.amount,w:t.amount+t.fee};
 const counted=t=>t.status!=="Duplicate";
 function balances(sh,txs){let c=sh.startCash,w=sh.startWallet;txs.filter(t=>t.shiftId===sh.id&&counted(t)).forEach(t=>{const e=eff(t);c+=e.c;w+=e.w});return{c,w}}
-async function refreshShift(){const s=(await all("shifts")).sort((a,b)=>a.startedAt<b.startedAt?1:-1);S.shift=s.find(x=>!x.endedAt&&(!x.device||x.device===S.deviceId))||null;banners()}
+async function refreshShift(){const s=(await all("shifts")).sort((a,b)=>a.startedAt<b.startedAt?1:-1);S.shift=s.find(x=>!x.endedAt&&x.device===S.deviceId)||null;banners()}
 async function loadTiers(){S.tiers=(await getSet("tiers"))||DEFAULT_TIERS}
 
 /* ---------- navigation / roles (FR-05, FR-07) ---------- */
@@ -158,12 +158,13 @@ $("#ownerBtn").onclick=()=>{
 };
 async function banners(){
   let h="";
-  if(!S.shift)h+=`<div class="warn">No shift is open. Transactions can be saved, but they will not count toward cash reconciliation. Open the Shift tab to start one.</div>`;
+  if(!S.shift)h+=`<div class="warn">No shift is open on this device. <a href="#shift" id="goShift" style="font-weight:700;text-decoration:underline;color:inherit">Open the Shift tab to enter your Tender name and start a shift</a> before recording transactions.</div>`;
   if(S.role==="owner"){
     if(await getSet("pinDefault"))h+=`<div class="warn">You are still using the default PIN (1234). Change it under Fees &amp; PIN.</div>`;
     const e=await storageInfo();if(e&&e.pct>=80)h+=`<div class="warn">Browser storage is ${e.pct.toFixed(0)}% full. Export a backup now (Backup tab).</div>`;
   }
   $("#banners").innerHTML=h;
+  const gs=$("#goShift");if(gs)gs.onclick=e=>{e.preventDefault();show("shift")};
 }
 
 /* ---------- signature pad (FR-08) ---------- */
@@ -229,7 +230,7 @@ $("#saveTx").onclick=async()=>{
   const hits=await findDup(ref);
   if(hits.length&&status!=="Duplicate"){showDup(hits);return}
   const t={id:uid(),ts:new Date().toISOString(),ref,type:document.querySelector("input[name=type]:checked").value,amount,fee,phone,status,name:$("#cname").value.trim(),addr:$("#addr").value.trim(),
-    sig:cv.toDataURL("image/png"),shiftId:S.shift?.id||null,tender:S.shift?.tender||"",kind:"sale",device:S.deviceId,deviceName:S.deviceName||"",statusHistory:[{status,ts:new Date().toISOString()}]};
+    sig:cv.toDataURL("image/png"),shiftId:S.shift?.id||null,tender:S.shift?.tender||"",kind:"sale",device:S.deviceId,statusHistory:[{status,ts:new Date().toISOString()}]};
   await put("transactions",t);resetForm();renderRecent();showReceipt(t);
 };
 
@@ -248,7 +249,7 @@ async function handleTxAction(e,refreshFn){
     d.querySelector("#cNo").onclick=closeModal;
     d.querySelector("#cOk").onclick=async()=>{const n=d.querySelector("#cn").value.trim();if(!n){toast("An explanatory note is required.");return}
       await put("transactions",{id:uid(),ts:new Date().toISOString(),ref:t.ref,type:t.type,amount:-t.amount,fee:-t.fee,phone:t.phone,name:t.name,addr:t.addr,status:"OK",sig:"",
-        shiftId:S.shift?.id||null,tender:S.shift?.tender||"",kind:"correction",device:S.deviceId,deviceName:S.deviceName||"",corrects:t.id,note:n,statusHistory:[{status:"OK",ts:new Date().toISOString()}]});
+        shiftId:S.shift?.id||null,tender:S.shift?.tender||"",kind:"correction",device:S.deviceId,corrects:t.id,note:n,statusHistory:[{status:"OK",ts:new Date().toISOString()}]});
       closeModal();await refreshFn();toast("Correction logged.")};
   }
 }
@@ -257,7 +258,7 @@ async function renderRecent(){
   walletCard(txs);
   const fixed=new Set(txs.filter(t=>t.kind==="correction").map(t=>t.corrects));
   const todayStr=day(new Date().toISOString());
-  const visible=txs.filter(t=>day(t.ts)===todayStr&&(S.shift?t.shiftId===S.shift.id:!t.shiftId));
+  const visible=txs.filter(t=>day(t.ts)===todayStr&&(S.shift?t.shiftId===S.shift.id:(!t.shiftId&&t.device===S.deviceId)));
   const pend=visible.filter(t=>t.status==="Pending");
   $("#pendingBox").hidden=!pend.length;
   $("#pendCount").textContent=pend.length;
@@ -273,13 +274,13 @@ $("#recent").onclick=e=>handleTxAction(e,renderRecent);
 /* ---------- shift & cash float reconciliation (FR-11) ---------- */
 async function renderShift(){
   const el=$("#v-shift"),sh=S.shift;
-  if(!sh){el.innerHTML=`<div class="card"><h2>Start shift</h2><label for="sn">Tender name</label><input id="sn">
+  if(!sh){el.innerHTML=`<div class="card"><h2>Start shift</h2><label for="sn">Tender name</label><input id="sn" autocomplete="off" placeholder="Enter your name">
    <div class="row"><div><label for="sc">Starting physical cash float (₱)</label><input id="sc" type="number" min="0" step="0.01"></div>
    <div><label for="sw">Starting GCash wallet balance (₱)</label><input id="sw" type="number" min="0" step="0.01"></div></div>
    <div class="btns"><button class="btn" id="sStart">Start shift</button></div></div>`;
    $("#sStart").onclick=async()=>{const n=$("#sn").value.trim(),c=parseFloat($("#sc").value),w=parseFloat($("#sw").value);
      if(!n||!(c>=0)||!(w>=0)){toast("Enter the tender name and both starting balances.");return}
-     await put("shifts",{id:uid(),device:S.deviceId,deviceName:S.deviceName||"",tender:n,startedAt:new Date().toISOString(),startCash:c,startWallet:w});await refreshShift();renderShift();toast("Shift started.")};
+     await put("shifts",{id:uid(),device:S.deviceId,tender:n,startedAt:new Date().toISOString(),startCash:c,startWallet:w});await refreshShift();renderShift();toast("Shift started.")};
    return}
   const txs=(await all("transactions")).sort((a,b)=>a.ts<b.ts?1:-1),b=balances(sh,txs);
   const myTxs=txs.filter(t=>t.shiftId===sh.id);
@@ -313,18 +314,68 @@ function zReading(s,txs){
 
 /* ---------- owner: summary ---------- */
 async function renderSummary(){
-  const el=$("#v-summary"),dt=el.dataset.d||day(new Date().toISOString());el.dataset.d=dt;
-  const txs=await all("transactions"),shifts=(await all("shifts")).filter(s=>day(s.startedAt)===dt);
-  const d=txs.filter(t=>day(t.ts)===dt),ok=d.filter(counted),sum=(ty,f)=>ok.filter(t=>t.type===ty).reduce((a,t)=>a+t[f],0);
-  el.innerHTML=`<div class="card"><h2>Daily summary</h2><label for="sd">Date</label><input id="sd" type="date" value="${dt}" style="max-width:200px">
-   <div class="kpi" style="margin-top:12px"><div>Cash-In<b>${peso(sum("Cash-In","amount"))}</b></div><div>Cash-Out<b>${peso(sum("Cash-Out","amount"))}</b></div>
-   <div>Service fees earned<b>${peso(sum("Cash-In","fee")+sum("Cash-Out","fee"))}</b></div><div>Transactions<b>${ok.filter(t=>t.kind==="sale").length}</b></div>
-   <div>Pending<b>${d.filter(t=>t.status==="Pending").length}</b></div><div>Duplicate attempts<b>${d.filter(t=>t.status==="Duplicate").length}</b></div></div>
-   <p class="note">Corrections are netted into the totals.</p></div>
-   <div class="card"><h2>Shifts</h2>${shifts.length?`<div class="tw"><table><tr><th>Tender</th><th>Device</th><th>Started</th><th>Ended</th><th>Cash result</th><th>GCash result</th></tr>`+shifts.map(s=>{
-     const r=(c,e)=>s.endedAt?(c-e===0?"Balanced":(c-e>0?"Over ":"Short ")+peso(Math.abs(c-e))):"Open";
-     return`<tr><td>${esc(s.tender)}</td><td>${esc(s.deviceName||"–")}</td><td>${fmt(s.startedAt)}</td><td>${s.endedAt?fmt(s.endedAt):"–"}</td><td>${r(s.countedCash,s.expectedCash)}</td><td>${r(s.countedWallet,s.expectedWallet)}</td></tr>`}).join("")+`</table></div>`:`<p class="note">No shifts on this date.</p>`}</div>`;
+  const el=$("#v-summary"),dtFilter=el.dataset.d||"";
+  const allTxs=await all("transactions"),allShifts=await all("shifts");
+  const daySet=new Set([...allTxs.map(t=>day(t.ts)),...allShifts.map(s=>day(s.startedAt))]);
+  const allDays=[...daySet].sort((a,b)=>a<b?1:-1);
+  const visibleDays=dtFilter?allDays.filter(k=>k===dtFilter):allDays;
+  const today=day(new Date().toISOString()),yest=day(new Date(Date.now()-864e5).toISOString());
+  let n=0;
+  const groups=visibleDays.map(k=>{
+    const d=allTxs.filter(t=>day(t.ts)===k),ok=d.filter(counted);
+    const sales=ok.filter(t=>t.kind==="sale").length;
+    const sum=(ty,f)=>ok.filter(t=>!ty||t.type===ty).reduce((a,t)=>a+Number(t[f]||0),0);
+    const feesEarned=sum("","fee");
+    const pend=d.filter(t=>t.status==="Pending").length,dups=d.filter(t=>t.status==="Duplicate").length;
+    const dayShifts=allShifts.filter(s=>day(s.startedAt)===k).sort((a,b)=>a.startedAt>b.startedAt?1:-1);
+    const lastSh=dayShifts[dayShifts.length-1];
+    let endCash="–",endCashSub="No shift recorded",endWallet="–",endWalletSub="No shift recorded";
+    if(lastSh){
+      const b=balances(lastSh,allTxs);
+      if(lastSh.endedAt){
+        endCash=peso(lastSh.countedCash);endCashSub=`After ${esc(lastSh.tender)}'s shift close`;
+        endWallet=peso(lastSh.countedWallet);endWalletSub=`After ${esc(lastSh.tender)}'s shift close`;
+      }else{
+        endCash=peso(b.c);endCashSub=`${esc(lastSh.tender)} (shift still open)`;
+        endWallet=peso(b.w);endWalletSub=`${esc(lastSh.tender)} (shift still open)`;
+      }
+    }
+    const lbl=new Date(k+"T00:00:00").toLocaleDateString("en-PH",{weekday:"long",year:"numeric",month:"long",day:"numeric"});
+    const tag=k===today?"Today · ":k===yest?"Yesterday · ":"";
+    const shiftRows=dayShifts.map(s=>{
+      const stx=ok.filter(t=>t.shiftId===s.id);
+      const sCount=stx.filter(t=>t.kind==="sale").length;
+      const sFees=stx.reduce((a,t)=>a+Number(t.fee||0),0);
+      const b=balances(s,allTxs);
+      const res=(c,e)=>{const df=c-e;return df===0?`<span class="st OK">Balanced</span>`:df>0?`<span class="st Pending">Over ${peso(df)}</span>`:`<span class="st Duplicate">Short ${peso(-df)}</span>`};
+      const cashCell=s.endedAt?`<b>${peso(s.countedCash)}</b><br><small class="note">${res(s.countedCash,s.expectedCash)}</small>`:`<b>${peso(b.c)}</b><br><small class="note">Open (expected)</small>`;
+      const walCell=s.endedAt?`<b>${peso(s.countedWallet)}</b><br><small class="note">${res(s.countedWallet,s.expectedWallet)}</small>`:`<b>${peso(b.w)}</b><br><small class="note">Open (expected)</small>`;
+      const timeStr=`${new Date(s.startedAt).toLocaleTimeString("en-PH",{timeStyle:"short"})} – ${s.endedAt?new Date(s.endedAt).toLocaleTimeString("en-PH",{timeStyle:"short"}):"Open"}`;
+      return `<tr><td><b>${esc(s.tender)}</b></td><td>${timeStr}</td><td>${sCount}</td><td>${peso(sFees)}</td><td>${cashCell}</td><td>${walCell}</td></tr>`;
+    }).join("");
+    return `<details class="day" ${n++<2||dtFilter?"open":""}><summary><span>${tag}${lbl}</span><span class="dc">${sales} transaction${sales===1?"":"s"}</span></summary>
+     <div class="kpi">
+       <div>Transactions<b>${sales}</b></div>
+       <div>Service fees earned<b>${peso(feesEarned)}</b></div>
+       <div>Cash-In<b>${peso(sum("Cash-In","amount"))}</b></div>
+       <div>Cash-Out<b>${peso(sum("Cash-Out","amount"))}</b></div>
+       <div>Physical cash (close)<b>${endCash}</b><small class="note" style="display:block;font-size:.75rem;margin-top:2px">${endCashSub}</small></div>
+       <div>GCash balance (close)<b>${endWallet}</b><small class="note" style="display:block;font-size:.75rem;margin-top:2px">${endWalletSub}</small></div>
+     </div>
+     ${(pend||dups)?`<p class="dev">${pend?`<span class="st Pending">${pend} pending</span>`:""}${pend&&dups?" · ":""}${dups?`<span class="st Duplicate">${dups} duplicate attempt${dups===1?"":"s"}</span>`:""}</p>`:""}
+     ${dayShifts.length?`<div class="tw" style="margin-top:8px"><table><tr><th>Tender</th><th>Shift time</th><th>Txns</th><th>Fees earned</th><th>Physical cash</th><th>GCash balance</th></tr>${shiftRows}</table></div>`:`<p class="note">No shifts recorded on this date.</p>`}
+    </details>`;
+  }).join("");
+  el.innerHTML=`<div class="card"><h2>Daily summary <button class="btn sec sm" id="ssync" style="float:right">⟳ Sync now</button></h2>
+   <div class="row" style="align-items:end;max-width:340px;margin-bottom:6px">
+     <div><label for="sd">Filter by date (optional)</label><input id="sd" type="date" value="${dtFilter}"></div>
+     ${dtFilter?`<div><button class="btn sec sm" id="sClear">Show all days</button></div>`:""}
+   </div>
+   <p class="note">${visibleDays.length} day(s) recorded. Corrections are netted into totals.</p>
+   ${groups||`<p class="note">No transactions or shifts recorded yet.</p>`}</div>`;
+  $("#ssync").onclick=async()=>{await syncNow();toast("Summary is up to date.");renderSummary()};
   $("#sd").onchange=e=>{el.dataset.d=e.target.value;renderSummary()};
+  if($("#sClear"))$("#sClear").onclick=()=>{el.dataset.d="";renderSummary()};
 }
 
 /* ---------- owner: transaction log with signatures (FR-08) ---------- */
@@ -340,26 +391,26 @@ async function renderLog(){
   let n=0;
   const groups=[...days].map(([k,d])=>{
     const sales=d.filter(t=>t.kind!=="correction"&&t.status!=="Duplicate").length,dups=d.filter(t=>t.status==="Duplicate").length,fixes=d.filter(t=>t.kind==="correction").length;
-    const dev={},tnd={};d.forEach(t=>{if(t.kind==="correction"||t.status==="Duplicate")return;const nm=t.deviceName||"Unknown device";dev[nm]=(dev[nm]||0)+1;const tn=t.tender||"No shift";tnd[tn]=(tnd[tn]||0)+1});
+    const tnd={};d.forEach(t=>{if(t.kind==="correction"||t.status==="Duplicate")return;const tn=t.tender||"No shift";tnd[tn]=(tnd[tn]||0)+1});
     const lbl=new Date(k+"T00:00:00").toLocaleDateString("en-PH",{weekday:"long",year:"numeric",month:"long",day:"numeric"});
     const tag=k===today?"Today · ":k===yest?"Yesterday · ":"";
     return `<details class="day" ${n++<2||q||stFilter!=="ALL"?"open":""}><summary><span>${tag}${lbl}</span><span class="dc">${sales} transaction${sales===1?"":"s"}</span></summary>
      <div class="kpi"><div>Cash-In<b>${peso(sum(d,"Cash-In","amount"))}</b></div><div>Cash-Out<b>${peso(sum(d,"Cash-Out","amount"))}</b></div><div>Service fees<b>${peso(sum(d,"","fee"))}</b></div></div>
-     <p class="dev"><b>By tender:</b> ${Object.entries(tnd).map(([a,c])=>esc(a)+" – "+c).join(" · ")||"–"} · <b>By device:</b> ${Object.entries(dev).map(([a,c])=>esc(a)+" – "+c).join(" · ")||"–"}${dups?` · <span class="st Duplicate">${dups} duplicate attempt${dups===1?"":"s"}</span>`:""}${fixes?` · ${fixes} correction${fixes===1?"":"s"}`:""}</p>
-     <div class="tw"><table><tr><th>Timestamp</th><th>Reference</th><th>Customer</th><th>Type</th><th>Amount</th><th>Fee</th><th>Status</th><th>Tender</th><th>Device</th><th>Details</th></tr>`+
-     d.map(t=>`<tr><td class="ts">${stamp(t.ts)}</td><td>${t.ref}</td><td>${esc(t.name||"—")}</td><td><span class="pill ${t.type==="Cash-In"?"in":"out"}">${t.kind==="correction"?"Correction":t.type}</span></td><td>${peso(t.amount)}</td><td>${peso(t.fee)}</td><td class="st ${t.status}">${t.status}</td><td>${esc(t.tender||"—")}</td><td>${esc(t.deviceName||"—")}</td><td><button class="btn sec sm" data-view="${t.id}">View</button></td></tr>`).join("")+`</table></div></details>`;
+     <p class="dev"><b>By tender:</b> ${Object.entries(tnd).map(([a,c])=>esc(a)+" – "+c).join(" · ")||"–"}${dups?` · <span class="st Duplicate">${dups} duplicate attempt${dups===1?"":"s"}</span>`:""}${fixes?` · ${fixes} correction${fixes===1?"":"s"}`:""}</p>
+     <div class="tw"><table><tr><th>Timestamp</th><th>Reference</th><th>Customer</th><th>Type</th><th>Amount</th><th>Fee</th><th>Status</th><th>Tender</th><th>Details</th></tr>`+
+     d.map(t=>`<tr><td class="ts">${stamp(t.ts)}</td><td>${t.ref}</td><td>${esc(t.name||"—")}</td><td><span class="pill ${t.type==="Cash-In"?"in":"out"}">${t.kind==="correction"?"Correction":t.type}</span></td><td>${peso(t.amount)}</td><td>${peso(t.fee)}</td><td class="st ${t.status}">${t.status}</td><td>${esc(t.tender||"—")}</td><td><button class="btn sec sm" data-view="${t.id}">View</button></td></tr>`).join("")+`</table></div></details>`;
   }).join("");
   el.innerHTML=`<div class="card"><h2>Transaction history <button class="btn sec sm" id="lsync" style="float:right">⟳ Sync now</button></h2>
-   <label for="lq">Search reference, customer, or tender name</label><input id="lq" value="${esc(raw)}" style="max-width:340px">
+   <label for="lq">Search reference, customer, or tender name</label><input id="lq" type="search" autocomplete="off" value="${esc(raw)}" style="max-width:340px">
    <div class="chips" id="stTabs" style="margin:10px 0 6px">${[["ALL","All"],["OK","OK"],["Pending","Pending"],["Duplicate","Duplicate"]].map(([k,l])=>`<button type="button" data-st="${k}" class="${stFilter===k?"on":""}">${l} (${counts[k]})</button>`).join("")}</div>
-   <p class="note">${txs.length} record(s) across ${days.size} day(s), from all connected devices. Records cannot be edited or deleted.</p>${groups||'<p class="note">No transactions found.</p>'}</div>`;
+   <p class="note">${txs.length} record(s) across ${days.size} day(s). Records cannot be edited or deleted.</p>${groups||'<p class="note">No transactions found.</p>'}</div>`;
   $("#lsync").onclick=async()=>{await syncNow();toast("Log is up to date.");renderLog()};
   $("#lq").oninput=e=>{el.dataset.q=e.target.value;renderLog().then(()=>{const i=$("#lq");i.focus();i.setSelectionRange(99,99)})};
   $("#stTabs").onclick=e=>{const st=e.target.dataset.st;if(st){el.dataset.st=st;renderLog()}};
   el.onclick=e=>{const id=e.target.dataset.view;if(id)viewTx(txs.find(x=>x.id===id))};
 }
 function viewTx(t){
-  const rows=[["Reference",t.ref],["Timestamp",stamp(t.ts)],["Customer",t.name||"—"],["Address",t.addr||"—"],["Phone",t.phone],["Type",t.kind==="correction"?"Correction ("+t.type+")":t.type],["Amount",peso(t.amount)],["Service charge",peso(t.fee)],["Status",t.status],["Tender",t.tender||"—"],["Device",t.deviceName||"—"]];
+  const rows=[["Reference",t.ref],["Timestamp",stamp(t.ts)],["Customer",t.name||"—"],["Address",t.addr||"—"],["Phone",t.phone],["Type",t.kind==="correction"?"Correction ("+t.type+")":t.type],["Amount",peso(t.amount)],["Service charge",peso(t.fee)],["Status",t.status],["Tender",t.tender||"—"]];
   if(t.statusHistory&&t.statusHistory.length>1)rows.push(["Status history",t.statusHistory.map(s=>s.status+" ("+stamp(s.ts)+")").join(" → ")]);
   if(t.note)rows.push(["Correction note",t.note]);
   const body=`<h2 style="font-size:1.5rem">SariSafe Transaction</h2>${rows.map(([k,v])=>`<p class="dl"><b>${k}:</b> ${esc(v)}</p>`).join("")}${t.sig?`<h3>Customer Signature</h3><img src="${t.sig}" alt="Signature" class="bigsig">`:""}`;
@@ -457,9 +508,8 @@ const TBL={transactions:"sarisafe_transactions",shifts:"sarisafe_shifts"};
 const DEFAULT_CLOUD={
   url:"https://lcfdxountexmtmnhuynw.supabase.co",
   key:"sb_publishable_QJtZjV-w2YgPZPN7LryR7g_KvhB6ZRb",
-  email:"YOUR_STAFF_EMAIL",
-  password:"YOUR_STAFF_PASSWORD",
-  deviceName:"Store Tender Phone"
+  email:"tender@fuentezstore.com",
+  password:"tender123"
 };
 const cloudCfg=async()=>(await getSet("cloud"))||(DEFAULT_CLOUD.email&&DEFAULT_CLOUD.password&&DEFAULT_CLOUD.email!=="YOUR_STAFF_EMAIL"?{...DEFAULT_CLOUD}:null);
 function setCloud(s){const c=$("#cloudChip"),m={ok:"☁ Synced",syncing:"☁ Syncing…",offline:"☁ Offline – will sync later",error:"☁ Sync error"};if(s==="off"){c.hidden=true;return}c.hidden=false;c.textContent=m[s];c.title=S.err||""}
@@ -511,22 +561,21 @@ async function syncNow(){
 async function renderCloudCard(){
   const c=await cloudCfg()||{},on=!!c.refresh,el=document.createElement("div");el.className="card";
   el.innerHTML=`<h2>Cloud sync – see transactions from other devices</h2>`+(on?
-   `<p class="note">Connected as ${esc(c.email)}. This device: <b>${esc(c.deviceName||"")}</b>${S.lastSync?" · last sync "+fmt(S.lastSync):""}</p>${S.err?`<p class="note" style="color:var(--red)"><b>Last error:</b> ${esc(S.err)}</p>`:""}<div class="btns"><button class="btn" id="cSync">Sync now</button><button class="btn red" id="cOff">Disconnect this device</button></div>`
+   `<p class="note">Connected as ${esc(c.email)}.${S.lastSync?" Last sync "+fmt(S.lastSync):""}</p>${S.err?`<p class="note" style="color:var(--red)"><b>Last error:</b> ${esc(S.err)}</p>`:""}<div class="btns"><button class="btn" id="cSync">Sync now</button><button class="btn red" id="cOff">Disconnect this device</button></div>`
   :`<p class="note">Records upload to your Supabase project when there is internet. The counter still works offline. Use the values from the README setup.</p>
    <label for="cu">Supabase project URL</label><input id="cu" placeholder="https://xxxx.supabase.co" value="${esc(c.url||"")}">
    <label for="ck">Supabase anon (public) key</label><input id="ck" value="${esc(c.key||"")}">
    <div class="row"><div><label for="ce">Store account email</label><input id="ce" type="email" value="${esc(c.email||"")}"></div><div><label for="cp">Store account password</label><input id="cp" type="password"></div></div>
-   <label for="cd">This device's name (e.g. Counter phone, Owner laptop)</label><input id="cd" value="${esc(c.deviceName||"")}">
    <div class="btns"><button class="btn" id="cOn">Connect</button></div><p id="cErr" class="note" style="color:var(--red)"></p>`);
   $("#v-backup").appendChild(el);
   if(on){
     $("#cSync").onclick=async()=>{await syncNow();toast("Sync finished.");renderBackup()};
     $("#cOff").onclick=async()=>{if(!confirm("Disconnect this device from the cloud? Records on this device stay."))return;
-      await setSet("cloud",null);await setSet("pull_transactions",null);await setSet("pull_shifts",null);S.deviceName="";setCloud("off");renderBackup()};
+      await setSet("cloud",null);await setSet("pull_transactions",null);await setSet("pull_shifts",null);setCloud("off");renderBackup()};
   }else $("#cOn").onclick=async()=>{
-    const cfg={url:$("#cu").value.trim().replace(/\/+$/,""),key:$("#ck").value.trim(),email:$("#ce").value.trim(),deviceName:$("#cd").value.trim()||"Device"},pw=$("#cp").value;
+    const cfg={url:$("#cu").value.trim().replace(/\/+$/,""),key:$("#ck").value.trim(),email:$("#ce").value.trim()},pw=$("#cp").value;
     if(!/^https:\/\/.+/.test(cfg.url)||!cfg.key||!cfg.email||!pw){toast("Fill in all the cloud fields.");return}
-    try{await sbToken(cfg,{email:cfg.email,password:pw},"password");S.deviceName=cfg.deviceName;toast("Connected. Syncing…");await syncNow();renderBackup()}
+    try{await sbToken(cfg,{email:cfg.email,password:pw},"password");toast("Connected. Syncing…");await syncNow();renderBackup()}
     catch(e){$("#cErr").textContent=(e instanceof TypeError?"Cannot reach Supabase. Check the Project URL and your internet. ":"")+(e.message||"");toast("Could not connect.")}
   };
 }
@@ -543,7 +592,6 @@ if("serviceWorker" in navigator&&location.protocol.startsWith("http"))navigator.
     document.querySelector("main").innerHTML=`<div class="card"><h2>Storage is unavailable</h2><p>This browser has blocked IndexedDB (for example, in private browsing). Enable site storage or use a normal browser window, then reload.</p></div>`;return}
   if(!(await getSet("pin"))){await setSet("pin",await hashPin("1234"));await setSet("pinDefault",true)}
   S.deviceId=await getSet("deviceId");if(!S.deviceId){S.deviceId=uid();await setSet("deviceId",S.deviceId)}
-  S.deviceName=(await cloudCfg())?.deviceName||"";
   await loadTiers();await refreshShift();show("counter");
   syncNow();setInterval(syncNow,45000);
   addEventListener("online",syncNow);addEventListener("offline",async()=>{if(await cloudCfg())setCloud("offline")});
