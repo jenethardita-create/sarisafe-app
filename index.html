@@ -59,7 +59,12 @@
     </div>
     <div class="btns"><button class="btn" id="saveTx">Save transaction</button><button class="btn sec" id="resetTx">Clear form</button></div>
   </div>
-  <div class="card"><h2>Recent entries</h2><div class="tw" id="recent"></div></div>
+  <div class="card pend-card" id="pendingBox" hidden>
+    <h2>⏳ Pending confirmations <span class="badge pend-badge" id="pendCount">0</span></h2>
+    <p class="note">Tap <b>Mark OK</b> once the GCash transfer arrives.</p>
+    <div class="tw" id="pendingList"></div>
+  </div>
+  <div class="card"><h2 id="recentTitle">Today's entries</h2><div class="tw" id="recent"></div></div>
 </section>
 
 <section id="v-shift" hidden></section>
@@ -228,20 +233,15 @@ $("#saveTx").onclick=async()=>{
   await put("transactions",t);resetForm();renderRecent();showReceipt(t);
 };
 
-/* ---------- recent list, status update, corrections (FR-10) ---------- */
-async function renderRecent(){
-  const txs=(await all("transactions")).sort((a,b)=>a.ts<b.ts?1:-1);
-  walletCard(txs);
-  const fixed=new Set(txs.filter(t=>t.kind==="correction").map(t=>t.corrects));
-  $("#recent").innerHTML=txs.length?`<table><tr><th>Time</th><th>Reference</th><th>Type</th><th>Amount</th><th>Status</th><th></th></tr>`+
-   txs.slice(0,8).map(t=>`<tr><td>${fmt(t.ts)}</td><td>${t.ref}</td><td>${t.kind==="correction"?"Correction":t.type}</td><td>${peso(t.amount)}</td><td class="st ${t.status}">${t.status}</td><td>
+/* ---------- recent list (today / active shift only), status update, corrections (FR-10) ---------- */
+function txRowHtml(t,fixed){
+  return `<tr><td>${fmt(t.ts)}</td><td>${t.ref}</td><td>${t.kind==="correction"?"Correction":t.type}</td><td>${peso(t.amount)}</td><td class="st ${t.status}">${t.status}</td><td>
    ${t.status==="Pending"?`<button class="btn grn sm" data-ok="${t.id}">Mark OK</button> `:""}
-   ${t.kind==="sale"&&t.status!=="Duplicate"&&!fixed.has(t.id)?`<button class="btn sec sm" data-fix="${t.id}">Correct</button>`:""}</td></tr>`).join("")+`</table>`
-   :`<p class="note">No transactions yet.</p>`;
+   ${t.kind==="sale"&&t.status!=="Duplicate"&&!fixed.has(t.id)?`<button class="btn sec sm" data-fix="${t.id}">Correct</button>`:""}</td></tr>`;
 }
-$("#recent").onclick=async e=>{
+async function handleTxAction(e,refreshFn){
   const ok=e.target.dataset.ok,fx=e.target.dataset.fix;
-  if(ok){const t=(await all("transactions")).find(x=>x.id===ok);t.status="OK";t.dirty=true;t.statusHistory.push({status:"OK",ts:new Date().toISOString()});await put("transactions",t);renderRecent();toast("Marked OK.")}
+  if(ok){const t=(await all("transactions")).find(x=>x.id===ok);t.status="OK";t.dirty=true;t.statusHistory.push({status:"OK",ts:new Date().toISOString()});await put("transactions",t);await refreshFn();toast("Marked OK.")}
   if(fx){const t=(await all("transactions")).find(x=>x.id===fx);
     const d=modal(`<h3>Correct entry</h3><p class="note">The original record is kept. A new offsetting entry reverses ${peso(t.amount)} (${t.type}, ref ${t.ref}). Record the right values as a new transaction afterward.</p>
     <label for="cn">Reason for correction (required)</label><textarea id="cn" rows="3"></textarea><div class="btns"><button class="btn" id="cOk">Log correction</button><button class="btn sec" id="cNo">Cancel</button></div>`);
@@ -249,9 +249,26 @@ $("#recent").onclick=async e=>{
     d.querySelector("#cOk").onclick=async()=>{const n=d.querySelector("#cn").value.trim();if(!n){toast("An explanatory note is required.");return}
       await put("transactions",{id:uid(),ts:new Date().toISOString(),ref:t.ref,type:t.type,amount:-t.amount,fee:-t.fee,phone:t.phone,name:t.name,addr:t.addr,status:"OK",sig:"",
         shiftId:S.shift?.id||null,tender:S.shift?.tender||"",kind:"correction",device:S.deviceId,deviceName:S.deviceName||"",corrects:t.id,note:n,statusHistory:[{status:"OK",ts:new Date().toISOString()}]});
-      closeModal();renderRecent();toast("Correction logged.")};
+      closeModal();await refreshFn();toast("Correction logged.")};
   }
-};
+}
+async function renderRecent(){
+  const txs=(await all("transactions")).sort((a,b)=>a.ts<b.ts?1:-1);
+  walletCard(txs);
+  const fixed=new Set(txs.filter(t=>t.kind==="correction").map(t=>t.corrects));
+  const todayStr=day(new Date().toISOString());
+  const visible=txs.filter(t=>day(t.ts)===todayStr&&(S.shift?t.shiftId===S.shift.id:!t.shiftId));
+  const pend=visible.filter(t=>t.status==="Pending");
+  $("#pendingBox").hidden=!pend.length;
+  $("#pendCount").textContent=pend.length;
+  $("#pendingList").innerHTML=pend.length?`<table><tr><th>Time</th><th>Reference</th><th>Type</th><th>Amount</th><th>Status</th><th></th></tr>`+pend.map(t=>txRowHtml(t,fixed)).join("")+`</table>`:"";
+  $("#recentTitle").textContent=S.shift?`Today's shift entries (${S.shift.tender})`:"Today's entries";
+  $("#recent").innerHTML=visible.length?`<table><tr><th>Time</th><th>Reference</th><th>Type</th><th>Amount</th><th>Status</th><th></th></tr>`+
+   visible.map(t=>txRowHtml(t,fixed)).join("")+`</table>`
+   :`<p class="note">${S.shift?"No transactions recorded in this shift yet.":"No transactions recorded today yet."}</p>`;
+}
+$("#pendingList").onclick=e=>handleTxAction(e,renderRecent);
+$("#recent").onclick=e=>handleTxAction(e,renderRecent);
 
 /* ---------- shift & cash float reconciliation (FR-11) ---------- */
 async function renderShift(){
@@ -264,13 +281,20 @@ async function renderShift(){
      if(!n||!(c>=0)||!(w>=0)){toast("Enter the tender name and both starting balances.");return}
      await put("shifts",{id:uid(),device:S.deviceId,deviceName:S.deviceName||"",tender:n,startedAt:new Date().toISOString(),startCash:c,startWallet:w});await refreshShift();renderShift();toast("Shift started.")};
    return}
-  const txs=await all("transactions"),b=balances(sh,txs);
+  const txs=(await all("transactions")).sort((a,b)=>a.ts<b.ts?1:-1),b=balances(sh,txs);
+  const myTxs=txs.filter(t=>t.shiftId===sh.id);
+  const myPend=myTxs.filter(t=>t.status==="Pending");
+  const fixed=new Set(myTxs.filter(t=>t.kind==="correction").map(t=>t.corrects));
   el.innerHTML=`<div class="card"><h2>Shift open – ${esc(sh.tender)}</h2><p class="note">Started ${fmt(sh.startedAt)}</p>
    <div class="kpi"><div>Starting cash<b>${peso(sh.startCash)}</b></div><div>Starting GCash<b>${peso(sh.startWallet)}</b></div>
    <div>Expected cash now<b>${peso(b.c)}</b></div><div>Expected GCash now<b>${peso(b.w)}</b></div></div></div>
-   <div class="card"><h2>Close shift</h2><div class="row"><div><label for="cc">Counted physical cash (₱)</label><input id="cc" type="number" min="0" step="0.01"></div>
+   <div class="card"><h2>Close shift</h2>
+   ${myPend.length?`<div class="warn" style="margin-bottom:12px">You still have <b>${myPend.length} Pending</b> transaction${myPend.length===1?"":"s"} in this shift. Confirm (<b>Mark OK</b>) or log a <b>Correction</b> below before closing your shift.</div>`:""}
+   <div class="row"><div><label for="cc">Counted physical cash (₱)</label><input id="cc" type="number" min="0" step="0.01"></div>
    <div><label for="cw">Actual GCash wallet balance (₱)</label><input id="cw" type="number" min="0" step="0.01"></div></div>
-   <div class="btns"><button class="btn red" id="sEnd">Close shift &amp; show summary</button></div></div>`;
+   <div class="btns"><button class="btn red" id="sEnd">Close shift &amp; show summary</button></div></div>
+   <div class="card"><h2>My shift transactions (${myTxs.length})</h2><div class="tw" id="shiftTxList">${myTxs.length?`<table><tr><th>Time</th><th>Reference</th><th>Type</th><th>Amount</th><th>Status</th><th></th></tr>`+myTxs.map(t=>txRowHtml(t,fixed)).join("")+`</table>`:`<p class="note">No transactions recorded in this shift yet.</p>`}</div></div>`;
+  $("#shiftTxList").onclick=e=>handleTxAction(e,renderShift);
   $("#sEnd").onclick=async()=>{const cc=parseFloat($("#cc").value),cw=parseFloat($("#cw").value);
     if(!(cc>=0)||!(cw>=0)){toast("Enter both counted amounts.");return}
     const done={...sh,dirty:true,endedAt:new Date().toISOString(),expectedCash:b.c,expectedWallet:b.w,countedCash:cc,countedWallet:cw};
@@ -305,27 +329,33 @@ async function renderSummary(){
 
 /* ---------- owner: transaction log with signatures (FR-08) ---------- */
 async function renderLog(){
-  const el=$("#v-log"),raw=el.dataset.q||"",q=raw.toLowerCase();
-  const txs=(await all("transactions")).sort((a,b)=>a.ts<b.ts?1:-1).filter(t=>!q||t.ref.includes(q)||(t.name||"").toLowerCase().includes(q));
+  const el=$("#v-log"),raw=el.dataset.q||"",q=raw.toLowerCase(),stFilter=el.dataset.st||"ALL";
+  const allTxs=(await all("transactions")).sort((a,b)=>a.ts<b.ts?1:-1);
+  const searched=allTxs.filter(t=>!q||t.ref.includes(q)||(t.name||"").toLowerCase().includes(q)||(t.tender||"").toLowerCase().includes(q));
+  const counts={ALL:searched.length,OK:searched.filter(t=>t.status==="OK").length,Pending:searched.filter(t=>t.status==="Pending").length,Duplicate:searched.filter(t=>t.status==="Duplicate").length};
+  const txs=stFilter==="ALL"?searched:searched.filter(t=>t.status===stFilter);
   const days=new Map();txs.forEach(t=>{const k=day(t.ts);if(!days.has(k))days.set(k,[]);days.get(k).push(t)});
   const today=day(new Date().toISOString()),yest=day(new Date(Date.now()-864e5).toISOString());
   const sum=(d,ty,f)=>d.filter(t=>counted(t)&&(!ty||t.type===ty)).reduce((a,t)=>a+t[f],0);
   let n=0;
   const groups=[...days].map(([k,d])=>{
     const sales=d.filter(t=>t.kind!=="correction"&&t.status!=="Duplicate").length,dups=d.filter(t=>t.status==="Duplicate").length,fixes=d.filter(t=>t.kind==="correction").length;
-    const dev={};d.forEach(t=>{if(t.kind==="correction"||t.status==="Duplicate")return;const nm=t.deviceName||"Unknown device";dev[nm]=(dev[nm]||0)+1});
+    const dev={},tnd={};d.forEach(t=>{if(t.kind==="correction"||t.status==="Duplicate")return;const nm=t.deviceName||"Unknown device";dev[nm]=(dev[nm]||0)+1;const tn=t.tender||"No shift";tnd[tn]=(tnd[tn]||0)+1});
     const lbl=new Date(k+"T00:00:00").toLocaleDateString("en-PH",{weekday:"long",year:"numeric",month:"long",day:"numeric"});
     const tag=k===today?"Today · ":k===yest?"Yesterday · ":"";
-    return `<details class="day" ${n++<2||q?"open":""}><summary><span>${tag}${lbl}</span><span class="dc">${sales} transaction${sales===1?"":"s"}</span></summary>
+    return `<details class="day" ${n++<2||q||stFilter!=="ALL"?"open":""}><summary><span>${tag}${lbl}</span><span class="dc">${sales} transaction${sales===1?"":"s"}</span></summary>
      <div class="kpi"><div>Cash-In<b>${peso(sum(d,"Cash-In","amount"))}</b></div><div>Cash-Out<b>${peso(sum(d,"Cash-Out","amount"))}</b></div><div>Service fees<b>${peso(sum(d,"","fee"))}</b></div></div>
-     <p class="dev"><b>By device:</b> ${Object.entries(dev).map(([a,c])=>esc(a)+" – "+c).join(" · ")||"–"}${dups?` · <span class="st Duplicate">${dups} duplicate attempt${dups===1?"":"s"}</span>`:""}${fixes?` · ${fixes} correction${fixes===1?"":"s"}`:""}</p>
-     <div class="tw"><table><tr><th>Timestamp</th><th>Reference</th><th>Customer</th><th>Type</th><th>Amount</th><th>Fee</th><th>Status</th><th>Device</th><th>Details</th></tr>`+
-     d.map(t=>`<tr><td class="ts">${stamp(t.ts)}</td><td>${t.ref}</td><td>${esc(t.name||"—")}</td><td><span class="pill ${t.type==="Cash-In"?"in":"out"}">${t.kind==="correction"?"Correction":t.type}</span></td><td>${peso(t.amount)}</td><td>${peso(t.fee)}</td><td class="st ${t.status}">${t.status}</td><td>${esc(t.deviceName||"—")}</td><td><button class="btn sec sm" data-view="${t.id}">View</button></td></tr>`).join("")+`</table></div></details>`;
+     <p class="dev"><b>By tender:</b> ${Object.entries(tnd).map(([a,c])=>esc(a)+" – "+c).join(" · ")||"–"} · <b>By device:</b> ${Object.entries(dev).map(([a,c])=>esc(a)+" – "+c).join(" · ")||"–"}${dups?` · <span class="st Duplicate">${dups} duplicate attempt${dups===1?"":"s"}</span>`:""}${fixes?` · ${fixes} correction${fixes===1?"":"s"}`:""}</p>
+     <div class="tw"><table><tr><th>Timestamp</th><th>Reference</th><th>Customer</th><th>Type</th><th>Amount</th><th>Fee</th><th>Status</th><th>Tender</th><th>Device</th><th>Details</th></tr>`+
+     d.map(t=>`<tr><td class="ts">${stamp(t.ts)}</td><td>${t.ref}</td><td>${esc(t.name||"—")}</td><td><span class="pill ${t.type==="Cash-In"?"in":"out"}">${t.kind==="correction"?"Correction":t.type}</span></td><td>${peso(t.amount)}</td><td>${peso(t.fee)}</td><td class="st ${t.status}">${t.status}</td><td>${esc(t.tender||"—")}</td><td>${esc(t.deviceName||"—")}</td><td><button class="btn sec sm" data-view="${t.id}">View</button></td></tr>`).join("")+`</table></div></details>`;
   }).join("");
-  el.innerHTML=`<div class="card"><h2>Transaction history <button class="btn sec sm" id="lsync" style="float:right">⟳ Sync now</button></h2><label for="lq">Search reference or customer name</label><input id="lq" value="${esc(raw)}" style="max-width:320px">
+  el.innerHTML=`<div class="card"><h2>Transaction history <button class="btn sec sm" id="lsync" style="float:right">⟳ Sync now</button></h2>
+   <label for="lq">Search reference, customer, or tender name</label><input id="lq" value="${esc(raw)}" style="max-width:340px">
+   <div class="chips" id="stTabs" style="margin:10px 0 6px">${[["ALL","All"],["OK","OK"],["Pending","Pending"],["Duplicate","Duplicate"]].map(([k,l])=>`<button type="button" data-st="${k}" class="${stFilter===k?"on":""}">${l} (${counts[k]})</button>`).join("")}</div>
    <p class="note">${txs.length} record(s) across ${days.size} day(s), from all connected devices. Records cannot be edited or deleted.</p>${groups||'<p class="note">No transactions found.</p>'}</div>`;
   $("#lsync").onclick=async()=>{await syncNow();toast("Log is up to date.");renderLog()};
   $("#lq").oninput=e=>{el.dataset.q=e.target.value;renderLog().then(()=>{const i=$("#lq");i.focus();i.setSelectionRange(99,99)})};
+  $("#stTabs").onclick=e=>{const st=e.target.dataset.st;if(st){el.dataset.st=st;renderLog()}};
   el.onclick=e=>{const id=e.target.dataset.view;if(id)viewTx(txs.find(x=>x.id===id))};
 }
 function viewTx(t){
@@ -427,8 +457,8 @@ const TBL={transactions:"sarisafe_transactions",shifts:"sarisafe_shifts"};
 const DEFAULT_CLOUD={
   url:"https://lcfdxountexmtmnhuynw.supabase.co",
   key:"sb_publishable_QJtZjV-w2YgPZPN7LryR7g_KvhB6ZRb",
-  email:"tender@fuentezstore.com",
-  password:"tender123",
+  email:"YOUR_STAFF_EMAIL",
+  password:"YOUR_STAFF_PASSWORD",
   deviceName:"Store Tender Phone"
 };
 const cloudCfg=async()=>(await getSet("cloud"))||(DEFAULT_CLOUD.email&&DEFAULT_CLOUD.password&&DEFAULT_CLOUD.email!=="YOUR_STAFF_EMAIL"?{...DEFAULT_CLOUD}:null);
