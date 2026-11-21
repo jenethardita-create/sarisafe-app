@@ -50,13 +50,17 @@
     </div>
     <div class="row">
       <div><label for="phone">Customer phone (09XXXXXXXXX)</label><input id="phone" inputmode="numeric" maxlength="11" placeholder="09123456789"></div>
-      <div><label for="status">Status</label><select id="status"><option value="OK">OK</option><option value="Pending">Pending</option><option value="Duplicate">Duplicate</option></select><div id="statusNote" class="note" style="margin-top:4px"></div></div>
+      <div><label for="status">Status</label><select id="status" disabled><option value="OK">OK</option><option value="Pending">Pending</option><option value="Duplicate">Duplicate</option></select><div id="statusNote" class="note" style="margin-top:4px"></div></div>
     </div>
     <label>Customer signature</label>
     <canvas id="sig" width="600" height="200" tabindex="0" aria-label="Signature pad"></canvas>
     <div class="btns">
       <button class="btn sec sm" id="sigClear">Clear signature</button>
     </div>
+    <label style="display:flex;gap:8px;align-items:flex-start;margin-top:10px;font-weight:400;font-size:.9rem;cursor:pointer">
+      <input type="checkbox" id="custAck" style="width:auto;margin-top:3px">
+      <span>I confirm that the mobile number and transaction amount I entered above are accurate. (Fuentez Store is not liable for customer input errors.)</span>
+    </label>
     <div class="btns"><button class="btn" id="saveTx">Save transaction</button><button class="btn sec" id="resetTx">Clear form</button></div>
   </div>
   <div class="card pend-card" id="pendingBox" hidden>
@@ -111,16 +115,25 @@ function openDB(){return new Promise((ok,no)=>{
 
 /* ---------- state ---------- */
 const S={role:"tender",tab:"counter",tiers:[],shift:null,manualFee:false,signed:false,alerted:""};
-const DEFAULT_TIERS=[{min:1,max:500,fee:10},{min:501,max:1000,fee:20},{min:1001,max:1500,fee:30},{min:1501,max:2000,fee:40},{min:2001,max:2500,fee:50},{min:2501,max:3000,fee:60}];
+const DEFAULT_TIERS=Array.from({length:100},(_,i)=>({min:i*500+1,max:(i+1)*500,fee:(i+1)*10}));
 const TABS={tender:[["counter","Counter"],["shift","Shift"]],owner:[["counter","Counter"],["shift","Shift"],["summary","Summary"],["log","Log"],["settings","Fees"],["backup","Backup"]]};
 
 /* ---------- fee tiers & balances (FR-09, FR-11) ---------- */
-const calcFee=a=>{const t=S.tiers.find(x=>a>=x.min&&a<=x.max);return t?t.fee:null};
+const calcFee=a=>{const t=S.tiers.find(x=>a>=x.min&&a<=x.max)||S.tiers.find((x,i)=>i>0&&a>S.tiers[i-1].max&&a<x.min);return t?t.fee:null};
 const eff=t=>t.type==="Cash-In"?{c:t.amount+t.fee,w:-t.amount}:{c:-t.amount,w:t.amount+t.fee};
 const counted=t=>t.status==="OK";
 function balances(sh,txs){let c=sh.startCash,w=sh.startWallet;txs.filter(t=>t.shiftId===sh.id&&counted(t)).forEach(t=>{const e=eff(t);c+=e.c;w+=e.w});return{c,w}}
 async function refreshShift(){const s=(await all("shifts")).sort((a,b)=>a.startedAt<b.startedAt?1:-1);S.shift=s.find(x=>!x.endedAt&&x.device===S.deviceId)||null;banners()}
-async function loadTiers(){S.tiers=(await getSet("tiers"))||DEFAULT_TIERS}
+async function loadTiers(){
+  const saved=await getSet("tiers");
+  const isLegacyDefault=Array.isArray(saved)&&saved.length===6&&saved.every((t,i)=>t.min===i*500+1&&t.max===(i+1)*500&&t.fee===(i+1)*10);
+  if(!saved||isLegacyDefault){
+    S.tiers=DEFAULT_TIERS.map(t=>({...t}));
+    if(isLegacyDefault)await setSet("tiers",S.tiers);
+  }else{
+    S.tiers=saved;
+  }
+}
 
 /* ---------- navigation / roles (FR-05, FR-07) ---------- */
 function nav(){
@@ -184,8 +197,8 @@ function showDup(hits){
   const d=modal(`<h3>⚠ Duplicate reference number!</h3><p>This 13-digit reference was already recorded:</p><ul>${prev}</ul>
   <p><b>Do not process this transaction.</b></p>
   <div class="btns"><button class="btn red" id="dCancel">Cancel entry</button><button class="btn sec" id="dLog">Log as Duplicate attempt</button></div>`,"alert");
-  d.querySelector("#dCancel").onclick=()=>{$("#ref").value="";S.alerted="";indicate("");closeModal();$("#ref").focus()};
-  d.querySelector("#dLog").onclick=()=>{$("#status").disabled=false;$("#status").value="Duplicate";closeModal();$("#amount").focus()};
+  d.querySelector("#dCancel").onclick=()=>{$("#ref").value="";S.alerted="";indicate("");syncStatusByType();closeModal();$("#ref").focus()};
+  d.querySelector("#dLog").onclick=()=>{$("#status").value="Duplicate";$("#status").disabled=true;$("#statusNote").textContent="Flagged as Duplicate attempt.";closeModal();$("#amount").focus()};
 }
 function indicate(ref,ms,hits){
   const el=$("#refInd");el.className="";
@@ -195,24 +208,28 @@ function indicate(ref,ms,hits){
 }
 $("#ref").oninput=async e=>{
   const v=e.target.value=e.target.value.replace(/\D/g,"").slice(0,13);
-  if(v.length<13){S.alerted="";indicate(v);return}
+  if(v.length<13){S.alerted="";indicate(v);syncStatusByType();return}
   const t0=performance.now(),hits=await findDup(v),ms=Math.round(performance.now()-t0);
   indicate(v,ms,hits);
   if(hits.length&&S.alerted!==v){S.alerted=v;showDup(hits)}
+  else if(!hits.length){S.alerted="";syncStatusByType()}
 };
 
-/* ---------- transaction type status rule (Cash-In = OK, Cash-Out = Pending) ---------- */
+/* ---------- transaction type status rule (Cash-In = OK only, Cash-Out = Pending first) ---------- */
 function syncStatusByType(){
   const txType=document.querySelector("input[name=type]:checked")?.value||"Cash-In";
   const st=$("#status"),sn=$("#statusNote");
+  st.disabled=true;
+  if(st.value==="Duplicate"&&S.alerted){
+    sn.textContent="Flagged as Duplicate attempt.";
+    return;
+  }
   if(txType==="Cash-Out"){
     st.value="Pending";
-    st.disabled=true;
-    sn.textContent="Cash-Out starts as Pending until the tender checks and confirms it.";
+    sn.textContent="Cash-Out is locked to Pending until the tender checks and confirms it.";
   }else{
-    st.disabled=false;
-    if(st.value!=="Duplicate")st.value="OK";
-    sn.textContent="Cash-In automatically defaults to OK.";
+    st.value="OK";
+    sn.textContent="Cash-In is automatically set to OK only.";
   }
 }
 document.querySelectorAll("input[name=type]").forEach(r=>r.addEventListener("change",syncStatusByType));
@@ -228,8 +245,9 @@ $("#feeAuto").onclick=()=>{S.manualFee=false;$("#feeAuto").hidden=true;$("#fee")
 function resetForm(){
   ["ref","amount","fee","phone","cname","addr"].forEach(i=>$("#"+i).value="");
   document.querySelector('input[name=type][value="Cash-In"]').checked=true;
-  $("#status").disabled=false;$("#status").value="OK";syncStatusByType();
-  S.manualFee=false;$("#feeAuto").hidden=true;S.alerted="";$("#feeNote").textContent="";clearSig();indicate("");
+  $("#custAck").checked=false;
+  S.manualFee=false;$("#feeAuto").hidden=true;S.alerted="";$("#feeNote").textContent="";
+  $("#status").value="OK";syncStatusByType();clearSig();indicate("");
 }
 $("#resetTx").onclick=resetForm;
 
@@ -237,13 +255,14 @@ $("#resetTx").onclick=resetForm;
 $("#saveTx").onclick=async()=>{
   const txType=document.querySelector("input[name=type]:checked").value;
   const ref=$("#ref").value,amount=parseFloat($("#amount").value),fee=parseFloat($("#fee").value||"0"),phone=$("#phone").value;
-  const status=txType==="Cash-Out"&&$("#status").value!=="Duplicate"?"Pending":$("#status").value;
+  const status=$("#status").value==="Duplicate"?"Duplicate":(txType==="Cash-Out"?"Pending":"OK");
   const err=!/^\d{13}$/.test(ref)?"Reference number must be exactly 13 digits."
     :!(amount>0)?"Enter a valid amount."
     :!$("#cname").value.trim()?"Enter the customer's name."
     :!(fee>=0)?"Enter a valid service fee."
     :!/^09\d{9}$/.test(phone)?"Phone number must be 11 digits starting with 09."
     :!S.signed?"Customer signature is required."
+    :!$("#custAck").checked?"Please confirm that the mobile number and amount are accurate."
     :null;
   if(err){toast(err);return}
   const hits=await findDup(ref);
@@ -333,46 +352,62 @@ function zReading(s,txs){
 
 /* ---------- owner: summary ---------- */
 async function renderSummary(){
-  const el=$("#v-summary"),dtFilter=el.dataset.d||"";
+  const el=$("#v-summary"),dtFilter=el.dataset.d||"",tnFilter=el.dataset.t||"";
   const allTxs=await all("transactions"),allShifts=await all("shifts");
-  const daySet=new Set([...allTxs.map(t=>day(t.ts)),...allShifts.map(s=>day(s.startedAt))]);
+  const norm=s=>String(s||"").trim();
+  const tenderMap=new Map();
+  [...allShifts.map(s=>s.tender),...allTxs.map(t=>t.tender)].forEach(raw=>{
+    const c=norm(raw);if(!c)return;
+    const k=c.toLowerCase();if(!tenderMap.has(k))tenderMap.set(k,c);
+  });
+  const tenderOptions=[...tenderMap.entries()].sort((a,b)=>a[1].localeCompare(b[1]));
+  const activeTenderName=tnFilter?(tenderMap.get(tnFilter)||tnFilter):"";
+
+  const tenderShiftIds=tnFilter?new Set(allShifts.filter(s=>norm(s.tender).toLowerCase()===tnFilter).map(s=>s.id)):null;
+  const matchTenderTx=t=>!tnFilter||(norm(t.tender).toLowerCase()===tnFilter||(t.shiftId&&tenderShiftIds.has(t.shiftId)));
+  const matchTenderShift=s=>!tnFilter||norm(s.tender).toLowerCase()===tnFilter;
+
+  const filtTxs=allTxs.filter(matchTenderTx);
+  const filtShifts=allShifts.filter(matchTenderShift);
+  const daySet=new Set([...filtTxs.map(t=>day(t.ts)),...filtShifts.map(s=>day(s.startedAt))]);
   const allDays=[...daySet].sort((a,b)=>a<b?1:-1);
   const visibleDays=dtFilter?allDays.filter(k=>k===dtFilter):allDays;
   const today=day(new Date().toISOString()),yest=day(new Date(Date.now()-864e5).toISOString());
   let n=0;
   const groups=visibleDays.map(k=>{
-    const d=allTxs.filter(t=>day(t.ts)===k),ok=d.filter(counted);
+    const d=filtTxs.filter(t=>day(t.ts)===k),ok=d.filter(counted);
     const sales=ok.filter(t=>t.kind==="sale").length;
     const sum=(ty,f)=>ok.filter(t=>!ty||t.type===ty).reduce((a,t)=>a+Number(t[f]||0),0);
     const feesEarned=sum("","fee");
     const pend=d.filter(t=>t.status==="Pending").length,dups=d.filter(t=>t.status==="Duplicate").length;
-    const dayShifts=allShifts.filter(s=>day(s.startedAt)===k).sort((a,b)=>a.startedAt>b.startedAt?1:-1);
+    const dayShifts=filtShifts.filter(s=>day(s.startedAt)===k).sort((a,b)=>a.startedAt>b.startedAt?1:-1);
     const lastSh=dayShifts[dayShifts.length-1];
     let endCash="–",endCashSub="No shift recorded",endWallet="–",endWalletSub="No shift recorded";
     if(lastSh){
       const b=balances(lastSh,allTxs);
-      if(lastSh.endedAt){
-        endCash=peso(lastSh.countedCash);endCashSub=`After ${esc(lastSh.tender)}'s shift close`;
-        endWallet=peso(lastSh.countedWallet);endWalletSub=`After ${esc(lastSh.tender)}'s shift close`;
+      if(tnFilter){
+        const tLabel=esc(activeTenderName);
+        if(lastSh.endedAt){
+          endCash=peso(lastSh.countedCash);endCashSub=`After ${tLabel}'s shift close`;
+          endWallet=peso(lastSh.countedWallet);endWalletSub=`After ${tLabel}'s shift close`;
+        }else{
+          endCash=peso(b.c);endCashSub=`${tLabel} (shift still open)`;
+          endWallet=peso(b.w);endWalletSub=`${tLabel} (shift still open)`;
+        }
       }else{
-        endCash=peso(b.c);endCashSub=`${esc(lastSh.tender)} (shift still open)`;
-        endWallet=peso(b.w);endWalletSub=`${esc(lastSh.tender)} (shift still open)`;
+        if(lastSh.endedAt){
+          endCash=peso(lastSh.countedCash);endCashSub="Latest closed shift";
+          endWallet=peso(lastSh.countedWallet);endWalletSub="Latest closed shift";
+        }else{
+          endCash=peso(b.c);endCashSub="Open shift (expected)";
+          endWallet=peso(b.w);endWalletSub="Open shift (expected)";
+        }
       }
     }
     const lbl=new Date(k+"T00:00:00").toLocaleDateString("en-PH",{weekday:"long",year:"numeric",month:"long",day:"numeric"});
     const tag=k===today?"Today · ":k===yest?"Yesterday · ":"";
-    const shiftRows=dayShifts.map(s=>{
-      const stx=ok.filter(t=>t.shiftId===s.id);
-      const sCount=stx.filter(t=>t.kind==="sale").length;
-      const sFees=stx.reduce((a,t)=>a+Number(t.fee||0),0);
-      const b=balances(s,allTxs);
-      const res=(c,e)=>{const df=c-e;return df===0?`<span class="st OK">Balanced</span>`:df>0?`<span class="st Pending">Over ${peso(df)}</span>`:`<span class="st Duplicate">Short ${peso(-df)}</span>`};
-      const cashCell=s.endedAt?`<b>${peso(s.countedCash)}</b><br><small class="note">${res(s.countedCash,s.expectedCash)}</small>`:`<b>${peso(b.c)}</b><br><small class="note">Open (expected)</small>`;
-      const walCell=s.endedAt?`<b>${peso(s.countedWallet)}</b><br><small class="note">${res(s.countedWallet,s.expectedWallet)}</small>`:`<b>${peso(b.w)}</b><br><small class="note">Open (expected)</small>`;
-      const timeStr=`${new Date(s.startedAt).toLocaleTimeString("en-PH",{timeStyle:"short"})} – ${s.endedAt?new Date(s.endedAt).toLocaleTimeString("en-PH",{timeStyle:"short"}):"Open"}`;
-      return `<tr><td><b>${esc(s.tender)}</b></td><td>${timeStr}</td><td>${sCount}</td><td>${peso(sFees)}</td><td>${cashCell}</td><td>${walCell}</td></tr>`;
-    }).join("");
-    return `<details class="day" ${n++<2||dtFilter?"open":""}><summary><span>${tag}${lbl}</span><span class="dc">${sales} transaction${sales===1?"":"s"}</span></summary>
+    const tenderTitleTag=tnFilter?` · <span style="color:var(--blue)">${esc(activeTenderName)}</span>`:"";
+    return `<details class="day" ${n++<2||dtFilter||tnFilter?"open":""}><summary><span>${tag}${lbl}${tenderTitleTag}</span><span class="dc">${sales} transaction${sales===1?"":"s"}</span></summary>
      <div class="kpi">
        <div>Transactions<b>${sales}</b></div>
        <div>Service fees earned<b>${peso(feesEarned)}</b></div>
@@ -382,19 +417,20 @@ async function renderSummary(){
        <div>GCash balance (close)<b>${endWallet}</b><small class="note" style="display:block;font-size:.75rem;margin-top:2px">${endWalletSub}</small></div>
      </div>
      ${(pend||dups)?`<p class="dev">${pend?`<span class="st Pending">${pend} pending</span>`:""}${pend&&dups?" · ":""}${dups?`<span class="st Duplicate">${dups} duplicate attempt${dups===1?"":"s"}</span>`:""}</p>`:""}
-     ${dayShifts.length?`<div class="tw" style="margin-top:8px"><table><tr><th>Tender</th><th>Shift time</th><th>Txns</th><th>Fees earned</th><th>Physical cash</th><th>GCash balance</th></tr>${shiftRows}</table></div>`:`<p class="note">No shifts recorded on this date.</p>`}
     </details>`;
   }).join("");
   el.innerHTML=`<div class="card"><h2>Daily summary <button class="btn sec sm" id="ssync" style="float:right">⟳ Sync now</button></h2>
-   <div class="row" style="align-items:end;max-width:340px;margin-bottom:6px">
+   <div class="row" style="align-items:end;max-width:540px;margin-bottom:6px">
      <div><label for="sd">Filter by date (optional)</label><input id="sd" type="date" value="${dtFilter}"></div>
-     ${dtFilter?`<div><button class="btn sec sm" id="sClear">Show all days</button></div>`:""}
+     <div><label for="stender">Filter by tender</label><select id="stender"><option value="">All tenders</option>${tenderOptions.map(([k,label])=>`<option value="${esc(k)}" ${tnFilter===k?"selected":""}>${esc(label)}</option>`).join("")}</select></div>
    </div>
-   <p class="note">${visibleDays.length} day(s) recorded. Corrections are netted into totals.</p>
-   ${groups||`<p class="note">No transactions or shifts recorded yet.</p>`}</div>`;
+   ${(dtFilter||tnFilter)?`<div style="margin-bottom:8px"><button class="btn sec sm" id="sClear">Reset filters</button></div>`:""}
+   <p class="note">${visibleDays.length} day(s) recorded${tnFilter?` for tender <b>${esc(activeTenderName)}</b>`:""}. Corrections are netted into totals.</p>
+   ${groups||`<p class="note">No transactions or shifts found for the selected filter.</p>`}</div>`;
   $("#ssync").onclick=async()=>{await syncNow();toast("Summary is up to date.");renderSummary()};
   $("#sd").onchange=e=>{el.dataset.d=e.target.value;renderSummary()};
-  if($("#sClear"))$("#sClear").onclick=()=>{el.dataset.d="";renderSummary()};
+  $("#stender").onchange=e=>{el.dataset.t=e.target.value;renderSummary()};
+  if($("#sClear"))$("#sClear").onclick=()=>{el.dataset.d="";el.dataset.t="";renderSummary()};
 }
 
 /* ---------- owner: transaction log with signatures (FR-08) ---------- */
@@ -441,16 +477,21 @@ function viewTx(t){
 /* ---------- owner: fee tiers & PIN (FR-07, FR-09) ---------- */
 function renderSettings(){
   const el=$("#v-settings"),row=(t={min:"",max:"",fee:""})=>`<div class="row tier" style="margin-bottom:6px"><input type="number" placeholder="From ₱" value="${t.min}"><input type="number" placeholder="To ₱" value="${t.max}"><input type="number" placeholder="Fee ₱" value="${t.fee}"></div>`;
-  el.innerHTML=`<div class="card"><h2>Service fee tiers (patong)</h2><div id="tiers">${S.tiers.map(row).join("")}</div>
-   <div class="btns"><button class="btn sec" id="addT">Add tier</button><button class="btn" id="saveT">Save tiers</button></div></div>
+  el.innerHTML=`<div class="card"><h2>Service fee tiers (patong)</h2>
+   <p class="note" style="margin-bottom:8px">Default rates cover <b>₱1 up to ₱50,000</b> (₱10 per ₱500 bracket, up to ₱1,000 fee).</p>
+   <div class="row" style="margin-bottom:4px;font-weight:700;font-size:.82rem;color:#52607a"><div>From (₱)</div><div>To (₱)</div><div>Fee (₱)</div></div>
+   <div id="tiers" style="max-height:420px;overflow-y:auto;padding-right:4px">${S.tiers.map(row).join("")}</div>
+   <div class="btns"><button class="btn sec" id="addT">Add tier</button><button class="btn" id="saveT">Save tiers</button><button class="btn sec" id="resetT">Reset to ₱50,000 default</button></div></div>
    <div class="card"><h2>Change owner PIN</h2><div class="row"><div><label for="p0">Current PIN</label><input id="p0" type="password" inputmode="numeric" maxlength="4"></div>
    <div><label for="p1">New 4-digit PIN</label><input id="p1" type="password" inputmode="numeric" maxlength="4"></div></div><div class="btns"><button class="btn" id="savePin">Change PIN</button></div></div>`;
-  $("#addT").onclick=()=>$("#tiers").insertAdjacentHTML("beforeend",row());
+  $("#addT").onclick=()=>{const box=$("#tiers");box.insertAdjacentHTML("beforeend",row());box.scrollTop=box.scrollHeight};
   $("#saveT").onclick=async()=>{
     const ts=[...document.querySelectorAll(".tier")].map(r=>{const i=r.querySelectorAll("input");return{min:parseFloat(i[0].value),max:parseFloat(i[1].value),fee:parseFloat(i[2].value)}}).filter(t=>!isNaN(t.min)||!isNaN(t.max)||!isNaN(t.fee));
     if(ts.some(t=>isNaN(t.min)||isNaN(t.max)||isNaN(t.fee)||t.min>t.max||t.fee<0)){toast("Each tier needs valid From, To and Fee values.");return}
     ts.sort((a,b)=>a.min-b.min);if(ts.some((t,i)=>i&&t.min<=ts[i-1].max)){toast("Tiers must not overlap.");return}
-    S.tiers=ts;await setSet("tiers",ts);toast("Fee tiers saved.")};
+    S.tiers=ts;await setSet("tiers",ts);renderSettings();toast("Fee tiers saved.")};
+  $("#resetT").onclick=async()=>{
+    S.tiers=DEFAULT_TIERS.map(t=>({...t}));await setSet("tiers",S.tiers);renderSettings();toast("Fee tiers reset to ₱1 – ₱50,000 default.")};
   $("#savePin").onclick=async()=>{const a=$("#p0").value,b=$("#p1").value;
     if(await hashPin(a)!==await getSet("pin")){toast("Current PIN is incorrect.");return}
     if(!/^\d{4}$/.test(b)){toast("New PIN must be exactly 4 digits.");return}
@@ -461,19 +502,59 @@ function renderSettings(){
 async function storageInfo(){try{const e=await navigator.storage.estimate();return{used:e.usage,quota:e.quota,pct:e.quota?e.usage/e.quota*100:0}}catch{return null}}
 function download(name,type,text){const a=document.createElement("a");a.href=URL.createObjectURL(new Blob([text],{type}));a.download=name;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),1000)}
 async function renderBackup(){
-  const e=await storageInfo(),lb=await getSet("lastBackup");
-  $("#v-backup").innerHTML=`<div class="card"><h2>Storage health</h2>${e?`<div class="bar ${e.pct>=80?"hi":""}"><i style="width:${Math.min(100,e.pct)}%"></i></div>
+  const el=$("#v-backup"),e=await storageInfo(),lb=await getSet("lastBackup"),allTxs=await all("transactions");
+  const todayStr=day(new Date().toISOString());
+  const selDate=el.dataset.csvDate??todayStr;
+  el.innerHTML=`<div class="card"><h2>Storage health</h2>${e?`<div class="bar ${e.pct>=80?"hi":""}"><i style="width:${Math.min(100,e.pct)}%"></i></div>
    <p class="note">${(e.used/1048576).toFixed(1)} MB used of ${(e.quota/1048576).toFixed(0)} MB (${e.pct.toFixed(1)}%). A backup warning appears at 80%.</p>`:`<p class="note">Storage usage is not available in this browser.</p>`}
    <p class="note">Last backup: ${lb?fmt(lb):"never"}. Browser data lives on this device only – export regularly, especially before clearing site data.</p></div>
-   <div class="card"><h2>Export</h2><div class="btns"><button class="btn" id="xCsv">Export transaction log (CSV)</button><button class="btn" id="xJson">Full backup (JSON)</button></div>
-   <p class="note">CSV is for spreadsheets (no signature images). The JSON backup includes transactions, signatures, shift history, and fee tiers.</p></div>
+   <div class="card"><h2>Export</h2>
+   <div class="row" style="align-items:end;max-width:440px;margin-bottom:8px">
+     <div><label for="csvDate">Filter CSV by date (leave blank for all dates)</label><input id="csvDate" type="date" value="${esc(selDate)}"></div>
+     <div class="btns" style="margin:0"><button class="btn sec sm" id="csvToday">Today</button><button class="btn sec sm" id="csvAllDates">All dates</button></div>
+   </div>
+   <p class="note" id="csvCountNote" style="margin:4px 0 10px"></p>
+   <div class="btns"><button class="btn" id="xCsv">Export transaction log (CSV)</button><button class="btn sec" id="xJson">Full backup (JSON)</button></div>
+   <p class="note">CSV is comma-separated and organized for Excel/Google Sheets (no signature images). The JSON backup includes all transactions, signatures, shift history, and fee tiers.</p></div>
    <div class="card"><h2>Restore from backup</h2><label for="imp">Choose a SariSafe JSON backup file</label><input id="imp" type="file" accept=".json,application/json">
    <p class="note">Records are merged into this device's database; existing records are not deleted. The PIN is not restored.</p></div>`;
   renderCloudCard();
+  const updateCsvPreview=()=>{
+    const d=$("#csvDate").value;el.dataset.csvDate=d;
+    const matched=d?allTxs.filter(t=>day(t.ts)===d):allTxs;
+    $("#csvCountNote").textContent=d
+      ?`Selected date (${d}): ${matched.length} transaction${matched.length===1?"":"s"} ready to export.`
+      :`All dates selected: ${matched.length} total transaction${matched.length===1?"":"s"} ready to export.`;
+  };
+  updateCsvPreview();
+  $("#csvDate").onchange=updateCsvPreview;
+  $("#csvToday").onclick=()=>{$("#csvDate").value=todayStr;updateCsvPreview()};
+  $("#csvAllDates").onclick=()=>{$("#csvDate").value="";updateCsvPreview()};
   $("#xCsv").onclick=async()=>{
-    const H=["id","timestamp","reference","type","amount","fee","customer_name","address","phone","status","entry_kind","corrects_id","note","shift_id","tender"],q=v=>`"${String(v??"").replace(/"/g,'""')}"`;
-    const rows=(await all("transactions")).sort((a,b)=>a.ts<b.ts?-1:1).map(t=>[t.id,t.ts,t.ref,t.type,t.amount,t.fee,t.name,t.addr,t.phone,t.status,t.kind,t.corrects,t.note,t.shiftId,t.tender].map(q).join(","));
-    download(`sarisafe-transactions-${day(new Date().toISOString())}.csv`,"text/csv",H.join(",")+"\n"+rows.join("\n"));await setSet("lastBackup",new Date().toISOString());renderBackup()};
+    const d=$("#csvDate").value;
+    const txs=(await all("transactions")).filter(t=>!d||day(t.ts)===d).sort((a,b)=>a.ts<b.ts?-1:1);
+    if(!txs.length){toast(d?`No transactions found on ${d}.`:"No transactions to export.");return}
+    const q=v=>`"${String(v??"").replace(/"/g,'""')}"`;
+    const txt=v=>v?`"=""${String(v).replace(/"/g,'""')}"""`:'""';
+    const H=["Date","Time","Reference Number","Type","Amount (PHP)","Service Fee (PHP)","Total (PHP)","Status","Customer Name","Phone Number","Address","Tender","Entry Kind","Notes","Transaction ID","Shift ID"];
+    const rows=txs.map(t=>{
+      const dt=new Date(t.ts),p=n=>String(n).padStart(2,"0");
+      const dStr=`${dt.getFullYear()}-${p(dt.getMonth()+1)}-${p(dt.getDate())}`;
+      const tStr=`${p(dt.getHours())}:${p(dt.getMinutes())}:${p(dt.getSeconds())}`;
+      const amt=Number(t.amount||0),fee=Number(t.fee||0);
+      return [q(dStr),q(tStr),txt(t.ref),q(t.kind==="correction"?"Correction ("+t.type+")":t.type),q(amt.toFixed(2)),q(fee.toFixed(2)),q((amt+fee).toFixed(2)),q(t.status),q(t.name||""),txt(t.phone||""),q(t.addr||""),q(t.tender||""),q(t.kind||"sale"),q(t.note||""),q(t.id),q(t.shiftId||"")].join(",");
+    });
+    const okTxs=txs.filter(counted);
+    const sum=(ty,f)=>okTxs.filter(t=>!ty||t.type===ty).reduce((a,t)=>a+Number(t[f]||0),0);
+    const summaryRows=[
+      "",
+      [q("SUMMARY (Confirmed OK Only)"),q(""),q(""),q("Cash-In Total"),q(sum("Cash-In","amount").toFixed(2)),q(""),q(""),q(""),q(""),q(""),q(""),q(""),q(""),q(""),q(""),q("")].join(","),
+      [q(""),q(""),q(""),q("Cash-Out Total"),q(sum("Cash-Out","amount").toFixed(2)),q(""),q(""),q(""),q(""),q(""),q(""),q(""),q(""),q(""),q(""),q("")].join(","),
+      [q(""),q(""),q(""),q("Service Fees Earned"),q(""),q(sum("","fee").toFixed(2)),q(""),q(""),q(""),q(""),q(""),q(""),q(""),q(""),q(""),q("")].join(",")
+    ];
+    const fname=d?`sarisafe-transactions-${d}.csv`:`sarisafe-transactions-all-${todayStr}.csv`;
+    download(fname,"text/csv;charset=utf-8","\uFEFF"+H.map(q).join(",")+"\n"+rows.join("\n")+"\n"+summaryRows.join("\n"));
+    await setSet("lastBackup",new Date().toISOString());toast(`Exported ${txs.length} transaction(s).`);renderBackup()};
   $("#xJson").onclick=async()=>{
     const b={app:"SariSafe",version:1,exportedAt:new Date().toISOString(),transactions:await all("transactions"),shifts:await all("shifts"),tiers:S.tiers};
     download(`sarisafe-backup-${day(b.exportedAt)}.json`,"application/json",JSON.stringify(b));await setSet("lastBackup",b.exportedAt);renderBackup()};
@@ -527,8 +608,8 @@ const TBL={transactions:"sarisafe_transactions",shifts:"sarisafe_shifts"};
 const DEFAULT_CLOUD={
   url:"https://lcfdxountexmtmnhuynw.supabase.co",
   key:"sb_publishable_QJtZjV-w2YgPZPN7LryR7g_KvhB6ZRb",
-  email:"xyllannel@gmail.com",
-  password:"Neyaxayen123"
+  email:"YOUR_STAFF_EMAIL",
+  password:"YOUR_STAFF_PASSWORD"
 };
 const cloudCfg=async()=>(await getSet("cloud"))||(DEFAULT_CLOUD.email&&DEFAULT_CLOUD.password&&DEFAULT_CLOUD.email!=="YOUR_STAFF_EMAIL"?{...DEFAULT_CLOUD}:null);
 function setCloud(s){const c=$("#cloudChip"),m={ok:"☁ Synced",syncing:"☁ Syncing…",offline:"☁ Offline – will sync later",error:"☁ Sync error"};if(s==="off"){c.hidden=true;return}c.hidden=false;c.textContent=m[s];c.title=S.err||""}
@@ -580,7 +661,7 @@ async function syncNow(){
 async function renderCloudCard(){
   const c=await cloudCfg()||{},on=!!c.refresh,el=document.createElement("div");el.className="card";
   el.innerHTML=`<h2>Cloud sync – see transactions from other devices</h2>`+(on?
-   `<p class="note">Connected as ${esc(c.email)}.${S.lastSync?" Last sync "+fmt(S.lastSync):""}</p>${S.err?`<p class="note" style="color:var(--red)"><b>Last error:</b> ${esc(S.err)}</p>`:""}<div class="btns"><button class="btn" id="cSync">Sync now</button><button class="btn red" id="cOff">Disconnect this device</button></div>`
+   `<p class="note">Connected as ${esc(c.email)}.${S.lastSync?" Last sync "+fmt(S.lastSync):""}</p>${S.err?`<p class="note" style="color:var(--red)"><b>Last error:</b> ${esc(c.err)}</p>`:""}<div class="btns"><button class="btn" id="cSync">Sync now</button><button class="btn red" id="cOff">Disconnect this device</button></div>`
   :`<p class="note">Records upload to your Supabase project when there is internet. The counter still works offline. Use the values from the README setup.</p>
    <label for="cu">Supabase project URL</label><input id="cu" placeholder="https://xxxx.supabase.co" value="${esc(c.url||"")}">
    <label for="ck">Supabase anon (public) key</label><input id="ck" value="${esc(c.key||"")}">

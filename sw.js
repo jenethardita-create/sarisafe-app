@@ -1,5 +1,5 @@
 const CACHE = "sarisafe-v16";
-const ASSETS = ["./", "./index.html", "./manifest.json"];
+const ASSETS = ["./", "./index.html", "./styles.css", "./manifest.json", "./icon.svg"];
 
 self.addEventListener("install", (e) => {
   e.waitUntil(
