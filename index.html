@@ -16,7 +16,7 @@
 <body>
 <header>
   <h1>SariSafe <span class="note" style="color:#c9d3ea">Fuentez Store</span><span class="badge" id="roleBadge">Store Tender</span></h1>
-  <span class="chip" id="cloudChip" hidden></span><button class="btn sec sm" id="ownerBtn">Owner login</button>
+  <span class="chip" id="cloudChip" hidden></span><button class="btn sec sm" id="installBtn" hidden>📲 Install App</button><button class="btn sec sm" id="ownerBtn">Owner login</button>
 </header>
 <nav id="nav"></nav>
 <main>
@@ -136,7 +136,7 @@ $("#ownerBtn").onclick=()=>{
   let pin="";
   const d=modal(`<div class="pinbox"><div class="lock">🔒</div><h3>Store Owner</h3><p class="note">Enter your 4-digit PIN</p>
    <div class="dots" id="dots"><i></i><i></i><i></i><i></i></div><p id="pinErr" class="pinErr" aria-live="polite"></p>
-   <div class="pad">${[1,2,3,4,5,6,7,8,9].map(n=>`<button type="button" data-k="${n}">${n}</button>`).join("")}<button type="button" class="x" data-k="cancel">Cancel</button><button type="button" data-k="0">0</button><button type="button" class="x" data-k="back" aria-label="Delete">⌫</button></div></div>`,"pin");
+   <div class="pad">${[1,2,3,4,5,6,7,8,9].map(n=>`<button type="button" data-k="${n}">${n}</button>`).join("")}<button type="button" class="x" data-k="cancel">Cancel</button><button type="button" class="x" data-k="0">0</button><button type="button" class="x" data-k="back" aria-label="Delete">⌫</button></div></div>`,"pin");
   const paint=()=>d.querySelectorAll("#dots i").forEach((x,i)=>x.classList.toggle("on",i<pin.length));
   const press=async k=>{
     if(k==="cancel"){closeModal();return}
@@ -424,23 +424,31 @@ function showReceipt(t){
 
 /* ---------- cloud sync (optional, Supabase REST; app still works fully offline) ---------- */
 const TBL={transactions:"sarisafe_transactions",shifts:"sarisafe_shifts"};
-const cloudCfg=async()=>(await getSet("cloud"))||null;
+const DEFAULT_CLOUD={
+  url:"https://lcfdxountexmtmnhuynw.supabase.co",
+  key:"sb_publishable_QJtZjV-w2YgPZPN7LryR7g_KvhB6ZRb",
+  email:"tender@fuentezstore.com",
+  password:"tender123",
+  deviceName:"Store Tender Phone"
+};
+const cloudCfg=async()=>(await getSet("cloud"))||(DEFAULT_CLOUD.email&&DEFAULT_CLOUD.password&&DEFAULT_CLOUD.email!=="YOUR_STAFF_EMAIL"?{...DEFAULT_CLOUD}:null);
 function setCloud(s){const c=$("#cloudChip"),m={ok:"☁ Synced",syncing:"☁ Syncing…",offline:"☁ Offline – will sync later",error:"☁ Sync error"};if(s==="off"){c.hidden=true;return}c.hidden=false;c.textContent=m[s];c.title=S.err||""}
 async function apiErr(r){let t="";try{const j=await r.clone().json();t=j.message||j.msg||j.error_description||j.error||""}catch{}return r.status+" "+t}
 async function sbToken(cfg,body,grant){
   const r=await fetch(`${cfg.url}/auth/v1/token?grant_type=${grant}`,{method:"POST",headers:{apikey:cfg.key,"Content-Type":"application/json"},body:JSON.stringify(body)});
   if(!r.ok)throw new Error("Login failed: "+await apiErr(r));
-  const j=await r.json();cfg.access=j.access_token;cfg.refresh=j.refresh_token;cfg.exp=Date.now()+(j.expires_in-60)*1000;await setSet("cloud",cfg);return cfg}
+  const j=await r.json();cfg.access=j.access_token;cfg.refresh=j.refresh_token;cfg.exp=Date.now()+(j.expires_in-60)*1000;delete cfg.password;await setSet("cloud",cfg);return cfg}
 const sb=(cfg,path,o={})=>fetch(cfg.url+"/rest/v1/"+path,{...o,headers:{apikey:cfg.key,Authorization:"Bearer "+cfg.access,"Content-Type":"application/json",...(o.headers||{})}});
 const getRec=(n,id)=>rq(store(n).get(id));
 let syncing=false,again=false,kickT;
 function kick(){if(syncing){again=true;return}clearTimeout(kickT);kickT=setTimeout(syncNow,1500)}
 async function syncNow(){
-  if(syncing)return;const cfg=await cloudCfg();if(!cfg||!cfg.refresh){setCloud("off");return}
+  if(syncing)return;const cfg=await cloudCfg();if(!cfg||(!cfg.refresh&&!(cfg.email&&cfg.password))){setCloud("off");return}
   if(!navigator.onLine){setCloud("offline");return}
   syncing=true;setCloud("syncing");let changed=false;
   try{
-    if(!cfg.access||Date.now()>cfg.exp)await sbToken(cfg,{refresh_token:cfg.refresh},"refresh_token");
+    if(!cfg.refresh)await sbToken(cfg,{email:cfg.email,password:cfg.password},"password");
+    else if(!cfg.access||Date.now()>cfg.exp)await sbToken(cfg,{refresh_token:cfg.refresh},"refresh_token");
     for(const [n,tbl] of Object.entries(TBL)){
       const dirty=(await all(n)).filter(x=>x.dirty!==false);
       for(let i=0;i<dirty.length;i+=20){
@@ -492,6 +500,11 @@ async function renderCloudCard(){
     catch(e){$("#cErr").textContent=(e instanceof TypeError?"Cannot reach Supabase. Check the Project URL and your internet. ":"")+(e.message||"");toast("Could not connect.")}
   };
 }
+
+/* ---------- install app prompt ---------- */
+let installPrompt;
+window.addEventListener("beforeinstallprompt",e=>{e.preventDefault();installPrompt=e;$("#installBtn").hidden=false});
+$("#installBtn").onclick=async()=>{if(!installPrompt)return;installPrompt.prompt();await installPrompt.userChoice;installPrompt=null;$("#installBtn").hidden=true};
 
 /* ---------- start ---------- */
 if("serviceWorker" in navigator&&location.protocol.startsWith("http"))navigator.serviceWorker.register("sw.js").catch(()=>{});

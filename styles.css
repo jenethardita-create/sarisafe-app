@@ -113,3 +113,53 @@ dialog.view{max-width:520px;max-height:90vh;overflow:auto}
 .rcpt-row span:last-child{text-align:right}
 .rcpt-sig{margin-top:10px}
 .rcpt-sig .note{display:block;margin-bottom:4px}
+
+#installBtn {
+  white-space: nowrap;
+}
+.rcpt-head {
+  text-align: center;
+  padding-bottom: 12px;
+  margin-bottom: 12px;
+  border-bottom: 1.5px dashed #cbd5e1;
+}
+.rcpt-ok {
+  display: inline-block;
+  background: #dcfce7;
+  color: #166534;
+  font-weight: 700;
+  font-size: 0.82rem;
+  padding: 4px 12px;
+  border-radius: 999px;
+}
+.rcpt-body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.rcpt-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+  font-size: 0.95rem;
+  padding-bottom: 6px;
+  border-bottom: 1px solid #f1f5f9;
+}
+.rcpt-row span:first-child {
+  color: #64748b;
+}
+.rcpt-row span:last-child {
+  text-align: right;
+}
+.rcpt-sig {
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1.5px dashed #cbd5e1;
+  text-align: center;
+}
+.rcpt-sig .bigsig {
+  max-height: 110px;
+  object-fit: contain;
+  margin-top: 4px;
+}
