@@ -1,1832 +1,701 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-  <title>SariSafe — GCash Transaction &amp; Reference Log</title>
-  <link rel="manifest" href="/manifest.json" />
-  <meta name="theme-color" content="#0052cc" />
-  <style>
-    :root {
-      --blue: #0052cc;
-      --blue-dark: #003d99;
-      --blue-bright: #0066ff;
-      --blue-soft: #e8f0fe;
-      --blue-border: #c6dafc;
-      --bg: #eef3fa;
-      --card: #ffffff;
-      --text: #0f172a;
-      --muted: #64748b;
-      --border: #e2e8f0;
-      --green: #15803d;
-      --green-bg: #dcfce7;
-      --red: #b91c1c;
-      --red-bg: #fee2e2;
-      --amber-border: #fde68a;
-    }
-
-    * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
-
-    body {
-      margin: 0;
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Inter, Arial, sans-serif;
-      background: var(--bg);
-      color: var(--text);
-      padding-bottom: 84px;
-    }
-
-    .topbar {
-      background: linear-gradient(135deg, var(--blue) 0%, var(--blue-dark) 100%);
-      color: #fff;
-      padding: 14px 16px;
-      position: sticky;
-      top: 0;
-      z-index: 40;
-      box-shadow: 0 2px 10px rgba(0, 45, 115, 0.18);
-    }
-
-    .topbar-inner {
-      max-width: 960px;
-      margin: 0 auto;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 10px;
-      flex-wrap: wrap;
-    }
-
-    .brand { display: flex; align-items: center; gap: 10px; }
-    .brand h1 { margin: 0; font-size: 1.25rem; font-weight: 800; letter-spacing: -0.02em; }
-
-    .sync-badge {
-      font-size: 0.78rem;
-      font-weight: 600;
-      padding: 4px 10px;
-      border-radius: 999px;
-      background: rgba(255, 255, 255, 0.16);
-      color: #fff;
-      display: inline-flex;
-      align-items: center;
-      gap: 5px;
-    }
-    .sync-badge.ok { background: rgba(22, 163, 74, 0.28); border: 1px solid rgba(134, 239, 172, 0.5); }
-    .sync-badge.err { background: rgba(220, 38, 38, 0.35); border: 1px solid rgba(252, 165, 165, 0.6); }
-
-    .topbar-actions { display: flex; align-items: center; gap: 8px; }
-
-    .pill-btn {
-      border: none;
-      border-radius: 999px;
-      padding: 8px 15px;
-      font-size: 0.85rem;
-      font-weight: 700;
-      cursor: pointer;
-      display: inline-flex;
-      align-items: center;
-      gap: 6px;
-    }
-    .pill-btn:active { transform: scale(0.98); }
-    .pill-white { background: #fff; color: var(--blue); }
-    .pill-glass { background: rgba(255, 255, 255, 0.18); color: #fff; border: 1px solid rgba(255, 255, 255, 0.28); }
-
-    .container { max-width: 960px; margin: 0 auto; padding: 14px 14px 24px; }
-
-    .banner {
-      background: #fffbeb;
-      border: 1px solid var(--amber-border);
-      color: #78350f;
-      padding: 10px 14px;
-      border-radius: 12px;
-      font-size: 0.86rem;
-      margin-bottom: 12px;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 10px;
-    }
-    .banner button.link-btn {
-      background: none;
-      border: none;
-      padding: 0;
-      color: #92400e;
-      font-weight: 700;
-      text-decoration: underline;
-      cursor: pointer;
-      font-size: inherit;
-    }
-    .banner-info { background: var(--blue-soft); border-color: var(--blue-border); color: var(--blue-dark); }
-
-    .card {
-      background: var(--card);
-      border-radius: 16px;
-      padding: 16px;
-      margin-bottom: 14px;
-      box-shadow: 0 2px 10px rgba(15, 23, 42, 0.05);
-      border: 1px solid rgba(226, 232, 240, 0.9);
-    }
-
-    .card-header {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 10px;
-      margin-bottom: 12px;
-      flex-wrap: wrap;
-    }
-    .card-title { margin: 0; font-size: 1.05rem; font-weight: 800; color: var(--text); }
-    .muted { color: var(--muted); font-size: 0.85rem; }
-
-    .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
-    @media (max-width: 600px) { .grid-2 { grid-template-columns: 1fr; } }
-
-    .field { margin-bottom: 12px; }
-    .field label { display: block; font-size: 0.82rem; font-weight: 700; color: #334155; margin-bottom: 5px; }
-
-    input[type="text"],
-    input[type="number"],
-    input[type="password"],
-    input[type="email"],
-    input[type="date"],
-    select {
-      width: 100%;
-      padding: 11px 12px;
-      border: 1.5px solid #cbd5e1;
-      border-radius: 10px;
-      font-size: 0.96rem;
-      font-family: inherit;
-      color: var(--text);
-      background: #fff;
-    }
-    input:focus, select:focus {
-      outline: none;
-      border-color: var(--blue-bright);
-      box-shadow: 0 0 0 3px rgba(0, 102, 255, 0.15);
-    }
-
-    .type-toggle { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 12px; }
-    .type-btn {
-      padding: 12px;
-      border-radius: 12px;
-      border: 2px solid var(--border);
-      background: #f8fafc;
-      font-size: 0.95rem;
-      font-weight: 800;
-      color: #475569;
-      cursor: pointer;
-      text-align: center;
-    }
-    .type-btn.active-in { border-color: #16a34a; background: var(--green-bg); color: var(--green); }
-    .type-btn.active-out { border-color: var(--blue-bright); background: var(--blue-soft); color: var(--blue); }
-
-    .btn {
-      border: none;
-      border-radius: 999px;
-      padding: 11px 18px;
-      font-size: 0.92rem;
-      font-weight: 700;
-      cursor: pointer;
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      gap: 6px;
-    }
-    .btn:active { transform: scale(0.98); }
-    .btn-primary { background: var(--blue-bright); color: #fff; }
-    .btn-primary:hover { background: var(--blue); }
-    .btn-soft { background: var(--blue-soft); color: var(--blue); }
-    .btn-soft:hover { background: #dbeafe; }
-    .btn-danger { background: var(--red-bg); color: var(--red); }
-    .btn-sm { padding: 6px 13px; font-size: 0.82rem; }
-    .btn-block { width: 100%; }
-
-    .dup-alert {
-      background: var(--red-bg);
-      border: 1.5px solid #fca5a5;
-      color: #7f1d1d;
-      padding: 11px 13px;
-      border-radius: 10px;
-      font-size: 0.86rem;
-      margin-bottom: 12px;
-      display: none;
-    }
-    .dup-alert.show { display: block; }
-
-    .sig-wrap {
-      border: 1.5px dashed #94a3b8;
-      border-radius: 12px;
-      background: #f8fafc;
-      overflow: hidden;
-    }
-    canvas#sigCanvas { display: block; width: 100%; height: 150px; touch-action: none; cursor: crosshair; }
-
-    .stats-row {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(145px, 1fr));
-      gap: 10px;
-      margin-bottom: 10px;
-    }
-    .stat-box { background: #f4f7fc; border-radius: 12px; padding: 12px 14px; }
-    .stat-label { font-size: 0.8rem; color: var(--muted); font-weight: 600; margin-bottom: 4px; }
-    .stat-val { font-size: 1.18rem; font-weight: 800; color: var(--blue); }
-    .stat-val.dark { color: var(--text); }
-
-    .date-card-head {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      cursor: pointer;
-      padding-bottom: 10px;
-      border-bottom: 1px solid var(--border);
-      margin-bottom: 12px;
-      user-select: none;
-    }
-    .date-card-title { font-weight: 800; font-size: 0.98rem; display: flex; align-items: center; gap: 8px; }
-    .tx-count-link { color: var(--blue-bright); font-weight: 700; font-size: 0.88rem; }
-
-    .table-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; margin-top: 8px; }
-    table { width: 100%; border-collapse: collapse; min-width: 720px; font-size: 0.86rem; }
-    th {
-      text-align: left;
-      color: var(--muted);
-      font-weight: 700;
-      padding: 9px 10px;
-      border-bottom: 1px solid var(--border);
-      white-space: nowrap;
-    }
-    td { padding: 10px 10px; border-bottom: 1px solid #f1f5f9; white-space: nowrap; vertical-align: middle; }
-
-    .badge { display: inline-block; padding: 3px 10px; border-radius: 999px; font-size: 0.78rem; font-weight: 700; }
-    .badge-in { background: var(--green-bg); color: var(--green); }
-    .badge-out { background: var(--blue-soft); color: var(--blue); }
-    .status-ok { color: #16a34a; font-weight: 800; }
-
-    .bottom-nav {
-      position: fixed;
-      bottom: 0;
-      left: 0;
-      right: 0;
-      background: #fff;
-      border-top: 1px solid var(--border);
-      display: flex;
-      justify-content: space-around;
-      padding: 6px 4px;
-      z-index: 45;
-      box-shadow: 0 -2px 10px rgba(15, 23, 42, 0.05);
-    }
-    .nav-item {
-      border: none;
-      background: transparent;
-      color: #475569;
-      padding: 7px 14px;
-      border-radius: 12px;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      gap: 3px;
-      font-size: 0.75rem;
-      font-weight: 700;
-      cursor: pointer;
-      min-width: 58px;
-    }
-    .nav-item.active { background: var(--blue-soft); color: var(--blue); }
-    .nav-item svg { width: 20px; height: 20px; stroke: currentColor; fill: none; stroke-width: 2; }
-
-    .modal-backdrop {
-      position: fixed;
-      inset: 0;
-      background: rgba(15, 23, 42, 0.52);
-      display: none;
-      align-items: center;
-      justify-content: center;
-      padding: 16px;
-      z-index: 100;
-    }
-    .modal-backdrop.open { display: flex; }
-    .modal-box {
-      background: #fff;
-      border-radius: 20px;
-      width: 100%;
-      max-width: 440px;
-      max-height: 90vh;
-      overflow-y: auto;
-      padding: 22px;
-      box-shadow: 0 20px 45px rgba(15, 23, 42, 0.25);
-    }
-    .modal-box h2 { margin: 0 0 14px; font-size: 1.25rem; font-weight: 800; }
-    .detail-line { margin: 7px 0; font-size: 0.94rem; line-height: 1.4; }
-    .detail-sig-box {
-      border: 1px solid #cbd5e1;
-      border-radius: 12px;
-      padding: 8px;
-      background: #fff;
-      margin-top: 6px;
-      min-height: 90px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-    }
-    .detail-sig-box img { max-width: 100%; max-height: 130px; display: block; }
-    .modal-actions { display: flex; align-items: center; gap: 10px; margin-top: 18px; flex-wrap: wrap; }
-    .hidden { display: none !important; }
-
-    @media print {
-      body * { visibility: hidden; }
-      #viewModal, #viewModal * { visibility: visible; }
-      #viewModal { position: static; background: none; padding: 0; }
-      #viewModal .modal-actions { display: none !important; }
-    }
-  </style>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SariSafe – GCash Transaction Recording and Verification</title>
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<meta name="theme-color" content="#007cff">
+<!--
+  SariSafe (CSC 106) – vanilla HTML/CSS/JS, no external requests (NFR-04, NFR-06).
+  Storage: IndexedDB "SariSafeDB" (FR-04, NFR-05). Requirement IDs refer to LW4 catalog.
+-->
+<link rel="stylesheet" href="styles.css">
 </head>
 <body>
+<header>
+  <h1>SariSafe <span class="note" style="color:#c9d3ea">Fuentez Store</span><span class="badge" id="roleBadge">Store Tender</span></h1>
+  <span class="chip" id="cloudChip" hidden></span><button class="btn sec sm" id="installBtn" hidden>📲 Install App</button><button class="btn sec sm" id="ownerBtn">Owner login</button>
+</header>
+<nav id="nav"></nav>
+<main>
+<div id="banners"></div>
 
-  <!-- TOP HEADER -->
-  <header class="topbar">
-    <div class="topbar-inner">
-      <div class="brand">
-        <h1>SariSafe</h1>
-        <span id="syncBadge" class="sync-badge">☁ Not connected</span>
-      </div>
-      <div class="topbar-actions">
-        <button id="btnInstallApp" class="pill-btn pill-glass hidden" type="button">📲 Install App</button>
-        <button id="btnOwnerToggle" class="pill-btn pill-white" type="button">Owner login</button>
-      </div>
-    </div>
-  </header>
-
-  <main class="container">
-    <!-- BANNERS -->
-    <div id="shiftWarningBanner" class="banner hidden">
-      <span><button type="button" class="link-btn" onclick="switchTab('shift')">Enter your Tender name and start a shift</button> before recording transactions.</span>
-    </div>
-    <div id="ownerBanner" class="banner banner-info hidden">
-      <span>Owner mode unlocked — manage Shifts, Summary, Log, Fees &amp; PIN.</span>
-    </div>
-
-    <!-- ==================== TAB: COUNTER ==================== -->
-    <section id="tab-counter" class="tab-view">
-      <div class="card">
-        <div class="card-header">
-          <h2 class="card-title">Record GCash Transaction</h2>
-          <span id="activeTenderLabel" class="muted">No active shift</span>
-        </div>
-
-        <div class="type-toggle">
-          <button type="button" id="btnTypeIn" class="type-btn active-in" onclick="setTxType('Cash-In')">Cash-In</button>
-          <button type="button" id="btnTypeOut" class="type-btn" onclick="setTxType('Cash-Out')">Cash-Out</button>
-        </div>
-
-        <div id="dupAlert" class="dup-alert"></div>
-
-        <form id="txForm" onsubmit="handleRecordTx(event)">
-          <div class="grid-2">
-            <div class="field">
-              <label for="txRef">GCash Reference No. (13 digits) *</label>
-              <input type="text" id="txRef" inputmode="numeric" maxlength="20" placeholder="e.g. 1423659798885" required oninput="checkDuplicateRef()" />
-            </div>
-            <div class="field">
-              <label for="txPhone">Customer GCash Phone (optional)</label>
-              <input type="text" id="txPhone" inputmode="tel" maxlength="15" placeholder="e.g. 09123456789" />
-            </div>
-          </div>
-
-          <div class="grid-2">
-            <div class="field">
-              <label for="txAmount">Amount (₱) *</label>
-              <input type="number" id="txAmount" min="1" max="50000" step="0.01" placeholder="0.00" required oninput="autoCalcFee()" />
-            </div>
-            <div class="field">
-              <label for="txFee">Service Charge / Fee (₱) *</label>
-              <input type="number" id="txFee" min="0" step="0.01" placeholder="0.00" required />
-            </div>
-          </div>
-
-          <div class="grid-2">
-            <div class="field">
-              <label for="txCustomer">Customer Name (optional)</label>
-              <input type="text" id="txCustomer" placeholder="Full name" />
-            </div>
-            <div class="field">
-              <label for="txAddress">Address (optional)</label>
-              <input type="text" id="txAddress" placeholder="Barangay / Street" />
-            </div>
-          </div>
-
-          <div class="field">
-            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:5px;">
-              <label style="margin:0;">Customer Signature</label>
-              <button type="button" class="btn btn-soft btn-sm" onclick="clearSignature()">Clear signature</button>
-            </div>
-            <div class="sig-wrap">
-              <canvas id="sigCanvas"></canvas>
-            </div>
-          </div>
-
-          <button type="submit" class="btn btn-primary btn-block">Record Transaction</button>
-        </form>
-      </div>
-    </section>
-
-    <!-- ==================== TAB: SHIFT ==================== -->
-    <section id="tab-shift" class="tab-view hidden">
-      <div id="startShiftCard" class="card">
-        <div class="card-header">
-          <h2 class="card-title">Start Tender Shift</h2>
-        </div>
-        <form onsubmit="handleStartShift(event)">
-          <div class="field">
-            <label for="shiftTenderName">Tender / Cashier Name *</label>
-            <input type="text" id="shiftTenderName" placeholder="e.g. Maria" required />
-          </div>
-          <div class="grid-2">
-            <div class="field">
-              <label for="shiftOpenCash">Opening Physical Cash (₱) *</label>
-              <input type="number" id="shiftOpenCash" min="0" step="0.01" value="0" required />
-            </div>
-            <div class="field">
-              <label for="shiftOpenGcash">Opening GCash Wallet (₱) *</label>
-              <input type="number" id="shiftOpenGcash" min="0" step="0.01" value="0" required />
-            </div>
-          </div>
-          <button type="submit" class="btn btn-primary btn-block">Start Shift</button>
-        </form>
-      </div>
-
-      <div id="activeShiftCard" class="card hidden">
-        <div class="card-header">
-          <h2 class="card-title">Current Shift: <span id="curShiftTender"></span></h2>
-          <span class="badge badge-in">Active</span>
-        </div>
-        <p class="muted" id="curShiftStarted"></p>
-        <div class="stats-row">
-          <div class="stat-box">
-            <div class="stat-label">Expected Physical Cash</div>
-            <div class="stat-val dark" id="curShiftCash">₱0.00</div>
-          </div>
-          <div class="stat-box">
-            <div class="stat-label">Expected GCash Wallet</div>
-            <div class="stat-val" id="curShiftGcash">₱0.00</div>
-          </div>
-          <div class="stat-box">
-            <div class="stat-label">Shift Fees Collected</div>
-            <div class="stat-val dark" id="curShiftFees">₱0.00</div>
-          </div>
-        </div>
-        <button type="button" class="btn btn-danger btn-block" onclick="handleEndShift()">End Current Shift</button>
-      </div>
-
-      <div class="card">
-        <div class="card-header">
-          <h2 class="card-title">Recent Shifts</h2>
-        </div>
-        <div id="shiftHistoryList" class="muted">No shifts recorded yet.</div>
-      </div>
-    </section>
-
-    <!-- ==================== TAB: SUMMARY (OWNER) ==================== -->
-    <section id="tab-summary" class="tab-view hidden">
-      <div class="card">
-        <div class="card-header">
-          <h2 class="card-title">Daily Summary</h2>
-          <div style="display:flex; gap:8px; align-items:center;">
-            <select id="summaryTenderFilter" onchange="renderSummary()" style="width:auto; padding:7px 11px; font-size:0.85rem;">
-              <option value="ALL">All tenders</option>
-            </select>
-            <button type="button" class="btn btn-soft btn-sm" onclick="syncNow(true)">↻ Sync now</button>
-          </div>
-        </div>
-        <p class="muted" style="margin:0;">Combined daily totals across the store. Use the filter above to inspect a single tender.</p>
-      </div>
-      <div id="summaryCardsContainer"></div>
-    </section>
-
-    <!-- ==================== TAB: LOG ==================== -->
-    <section id="tab-log" class="tab-view hidden">
-      <div class="card" style="padding:12px 16px;">
-        <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
-          <input type="text" id="logSearchInput" placeholder="Search reference, customer, or tender..." oninput="renderLog()" style="flex:1; min-width:200px;" />
-          <button type="button" class="btn btn-soft btn-sm" onclick="syncNow(true)">↻ Sync now</button>
-        </div>
-      </div>
-      <div id="logCardsContainer"></div>
-    </section>
-
-    <!-- ==================== TAB: FEES & PIN (OWNER) ==================== -->
-    <section id="tab-fees" class="tab-view hidden">
-      <div class="card">
-        <div class="card-header">
-          <h2 class="card-title">Service Fee Tiers (₱1 up to ₱50,000)</h2>
-          <button type="button" class="btn btn-soft btn-sm" onclick="resetDefaultTiers()">Reset to ₱50,000 default</button>
-        </div>
-        <p class="muted">Default rates cover ₱1 up to ₱50,000 (₱10 per ₱500 bracket, max ₱1,000). Edit any bracket below and save.</p>
-        <div class="table-scroll" style="max-height:360px; overflow-y:auto;">
-          <table style="min-width:340px;">
-            <thead>
-              <tr>
-                <th>Min Amount (₱)</th>
-                <th>Max Amount (₱)</th>
-                <th>Fee (₱)</th>
-              </tr>
-            </thead>
-            <tbody id="tiersTableBody"></tbody>
-          </table>
-        </div>
-        <div style="margin-top:12px;">
-          <button type="button" class="btn btn-primary" onclick="saveEditedTiers()">Save Fee Schedule</button>
-        </div>
-      </div>
-
-      <div class="card">
-        <div class="card-header">
-          <h2 class="card-title">Owner Security PIN</h2>
-        </div>
-        <div class="grid-2">
-          <div class="field">
-            <label for="newOwnerPin">New 4-Digit Owner PIN</label>
-            <input type="password" id="newOwnerPin" maxlength="6" inputmode="numeric" placeholder="Default: 1234" />
-          </div>
-          <div class="field" style="display:flex; align-items:flex-end;">
-            <button type="button" class="btn btn-soft btn-block" onclick="saveNewPin()">Update PIN</button>
-          </div>
-        </div>
-      </div>
-    </section>
-
-    <!-- ==================== TAB: BACKUP & CLOUD SYNC (OWNER) ==================== -->
-    <section id="tab-backup" class="tab-view hidden">
-      <div class="card">
-        <div class="card-header">
-          <h2 class="card-title">Storage Health</h2>
-        </div>
-        <p id="storageHealthText" class="muted">Checking local database...</p>
-      </div>
-
-      <div class="card">
-        <div class="card-header">
-          <h2 class="card-title">Export Transactions &amp; Backup</h2>
-        </div>
-        <div class="grid-2">
-          <div class="field">
-            <label for="csvDateFilter">CSV Export Date (leave blank for all dates)</label>
-            <input type="date" id="csvDateFilter" />
-          </div>
-          <div class="field" style="display:flex; align-items:flex-end; gap:8px;">
-            <button type="button" class="btn btn-primary" style="flex:1;" onclick="exportCsv()">Export CSV (Excel)</button>
-            <button type="button" class="btn btn-soft" onclick="exportJsonBackup()">JSON Backup</button>
-          </div>
-        </div>
-      </div>
-
-      <div class="card">
-        <div class="card-header">
-          <h2 class="card-title">Restore from Backup</h2>
-        </div>
-        <p class="muted">Restore transactions, shifts, and fee settings from a previously exported SariSafe <code>.json</code> file.</p>
-        <input type="file" id="restoreFileInput" accept=".json,application/json" onchange="handleRestoreJson(event)" />
-      </div>
-
-      <div class="card">
-        <div class="card-header">
-          <h2 class="card-title">Cloud sync – see transactions from other devices</h2>
-        </div>
-        <div id="cloudConnectedBox" class="hidden">
-          <p style="font-weight:700; color:var(--green); margin-top:0;">Connected as <span id="cloudConnectedEmail"></span></p>
-          <p id="cloudErrorMsg" class="muted" style="color:var(--red);"></p>
-          <div style="display:flex; gap:10px; flex-wrap:wrap;">
-            <button type="button" class="btn btn-primary" onclick="syncNow(true)">↻ Sync now</button>
-            <button type="button" class="btn btn-danger" onclick="disconnectCloud()">Disconnect this device</button>
-          </div>
-        </div>
-
-        <form id="cloudConnectForm" onsubmit="handleConnectCloud(event)">
-          <div class="field">
-            <label for="sbUrl">Supabase project URL</label>
-            <input type="text" id="sbUrl" value="https://lcfdxountexmtmnhuynw.supabase.co" required />
-          </div>
-          <div class="field">
-            <label for="sbAnon">Supabase anon key</label>
-            <input type="text" id="sbAnon" placeholder="eyJhbGciOiJIUzI1NiIs..." required />
-          </div>
-          <div class="grid-2">
-            <div class="field">
-              <label for="sbEmail">Store account email</label>
-              <input type="email" id="sbEmail" placeholder="store@example.com" required />
-            </div>
-            <div class="field">
-              <label for="sbPass">Store account password</label>
-              <input type="password" id="sbPass" placeholder="••••••••" required />
-            </div>
-          </div>
-          <button type="submit" class="btn btn-primary btn-block">Connect</button>
-        </form>
-      </div>
-    </section>
-  </main>
-
-  <!-- ==================== BOTTOM NAVIGATION ==================== -->
-  <nav class="bottom-nav">
-    <button type="button" class="nav-item active" data-tab="counter" onclick="switchTab('counter')">
-      <svg viewBox="0 0 24 24"><path d="M3 10.5L12 3l9 7.5V21a1 1 0 0 1-1 1h-5v-7H9v7H4a1 1 0 0 1-1-1V10.5z"/></svg>
-      <span>Counter</span>
-    </button>
-    <button type="button" class="nav-item" data-tab="shift" onclick="switchTab('shift')">
-      <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
-      <span>Shift</span>
-    </button>
-    <button type="button" class="nav-item owner-only hidden" data-tab="summary" onclick="switchTab('summary')">
-      <svg viewBox="0 0 24 24"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg>
-      <span>Summary</span>
-    </button>
-    <button type="button" class="nav-item" data-tab="log" onclick="switchTab('log')">
-      <svg viewBox="0 0 24 24"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg>
-      <span>Log</span>
-    </button>
-    <button type="button" class="nav-item owner-only hidden" data-tab="fees" onclick="switchTab('fees')">
-      <svg viewBox="0 0 24 24"><path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6"/></svg>
-      <span>Fees</span>
-    </button>
-    <button type="button" class="nav-item owner-only hidden" data-tab="backup" onclick="switchTab('backup')">
-      <svg viewBox="0 0 24 24"><path d="M12 3v12m0 0l-4-4m4 4l4-4M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg>
-      <span>Backup</span>
-    </button>
-  </nav>
-
-  <!-- ==================== MODAL: OWNER PIN ==================== -->
-  <div id="pinModal" class="modal-backdrop">
-    <div class="modal-box" style="max-width:360px;">
-      <h2>Owner Login</h2>
-      <p class="muted">Enter your 4-digit owner PIN to unlock Summary, Fees, and Backup.</p>
-      <form onsubmit="submitOwnerPin(event)">
-        <div class="field">
-          <input type="password" id="pinInput" inputmode="numeric" maxlength="6" placeholder="••••" required autofocus />
-        </div>
-        <div class="modal-actions">
-          <button type="submit" class="btn btn-primary">Unlock</button>
-          <button type="button" class="btn btn-soft" onclick="closeModal('pinModal')">Cancel</button>
-        </div>
-      </form>
-    </div>
+<!-- COUNTER (FR-01, FR-02, FR-03, FR-08, FR-09, FR-10) -->
+<section id="v-counter">
+  <div class="wallet">
+    <div class="wl"><span>Expected GCash wallet</span><button id="eye" aria-label="Show or hide balances">👁 Show / hide</button></div>
+    <b id="wBal">–</b>
+    <div class="wsub"><div><small>Cash drawer</small><span id="wCash">–</span></div><div><small>Shift</small><span id="wShift">–</span></div></div>
   </div>
-
-  <!-- ==================== MODAL: VIEW TRANSACTION DETAILS ==================== -->
-  <div id="viewModal" class="modal-backdrop">
-    <div class="modal-box">
-      <h2>SariSafe Transaction</h2>
-      <div id="viewModalBody"></div>
-      <div class="modal-actions">
-        <button type="button" class="btn btn-primary" onclick="window.print()">Print details</button>
-        <button type="button" class="btn btn-soft" onclick="closeModal('viewModal')">Close</button>
-      </div>
+  <div class="card">
+    <h2>New transaction</h2>
+    <label for="ref">GCash reference number (13 digits)</label>
+    <input id="ref" inputmode="numeric" autocomplete="off" maxlength="13" placeholder="0000000000000">
+    <div id="refInd">Enter the full 13-digit reference number.</div>
+    <label>Transaction type</label>
+    <div class="seg">
+      <label><input type="radio" name="type" value="Cash-In" checked>Cash-In</label>
+      <label><input type="radio" name="type" value="Cash-Out">Cash-Out</label>
     </div>
+    <div class="row">
+      <div><label for="amount">Amount (₱)</label><input id="amount" type="number" inputmode="decimal" min="1" step="0.01">
+        <div class="chips" id="chips"><button type="button" data-a="100">₱100</button><button type="button" data-a="200">₱200</button><button type="button" data-a="500">₱500</button><button type="button" data-a="1000">₱1,000</button></div></div>
+      <div><label for="fee">Service fee / patong (₱) <span id="feeNote" class="note"></span></label><input id="fee" type="number" inputmode="decimal" min="0" step="0.01"><button type="button" class="btn sec sm" id="feeAuto" hidden style="margin-top:6px">Use auto fee</button></div>
+    </div>
+    <div class="row">
+      <div><label for="cname">Customer name</label><input id="cname" autocomplete="off" placeholder="Full name"></div>
+      <div><label for="addr">Address (optional)</label><input id="addr" autocomplete="off" placeholder="e.g. P-1 Sumilihon, Butuan City"></div>
+    </div>
+    <div class="row">
+      <div><label for="phone">Customer phone (09XXXXXXXXX)</label><input id="phone" inputmode="numeric" maxlength="11" placeholder="09123456789"></div>
+      <div><label for="status">Status</label><select id="status" disabled><option value="OK">OK</option><option value="Pending">Pending</option><option value="Duplicate">Duplicate</option></select><div id="statusNote" class="note" style="margin-top:4px"></div></div>
+    </div>
+    <label>Customer signature</label>
+    <canvas id="sig" width="600" height="200" tabindex="0" aria-label="Signature pad"></canvas>
+    <div class="btns">
+      <button class="btn sec sm" id="sigClear">Clear signature</button>
+    </div>
+    <label style="display:flex;gap:8px;align-items:flex-start;margin-top:10px;font-weight:400;font-size:.9rem;cursor:pointer">
+      <input type="checkbox" id="custAck" style="width:auto;margin-top:3px">
+      <span>I confirm that the mobile number and transaction amount I entered above are accurate. (Fuentez Store is not liable for customer input errors.)</span>
+    </label>
+    <div class="btns"><button class="btn" id="saveTx">Save transaction</button><button class="btn sec" id="resetTx">Clear form</button></div>
   </div>
-
-  <script>
-    /* =========================================================================
-       1. CONFIGURATION & DEFAULT FEE TIERS (₱1 up to ₱50,000)
-       ========================================================================= */
-    // Optional: fill in anonKey, email, and password below if you want every new
-    // device to auto-connect to Supabase without typing them in Backup -> Cloud sync.
-    const DEFAULT_CLOUD = {
-      url: "https://lcfdxountexmtmnhuynw.supabase.co",
-      anonKey: "",
-      email: "",
-      password: ""
-    };
-
-    function buildDefaultTiers() {
-      const list = [];
-      for (let max = 500; max <= 50000; max += 500) {
-        const min = max === 500 ? 1 : max - 499;
-        const fee = (max / 500) * 10; // ₱10 per ₱500 bracket, up to ₱1,000 at ₱50,000
-        list.push({ min, max, fee });
-      }
-      return list;
-    }
-
-    const DEFAULT_TIERS = buildDefaultTiers();
-
-    /* =========================================================================
-       2. INDEXEDDB STORAGE LAYER
-       ========================================================================= */
-    const DB_NAME = "SariSafeDB";
-    const DB_VERSION = 2;
-    let db = null;
-
-    function openDB() {
-      return new Promise((resolve, reject) => {
-        const req = indexedDB.open(DB_NAME, DB_VERSION);
-        req.onupgradeneeded = (e) => {
-          const d = e.target.result;
-          if (!d.objectStoreNames.contains("transactions")) d.createObjectStore("transactions", { keyPath: "id" });
-          if (!d.objectStoreNames.contains("shifts")) d.createObjectStore("shifts", { keyPath: "id" });
-          if (!d.objectStoreNames.contains("settings")) d.createObjectStore("settings", { keyPath: "key" });
-        };
-        req.onsuccess = (e) => { db = e.target.result; resolve(db); };
-        req.onerror = (e) => reject(e.target.error);
-      });
-    }
-
-    function dbGetAll(storeName) {
-      return new Promise((resolve, reject) => {
-        const tx = db.transaction(storeName, "readonly");
-        const req = tx.objectStore(storeName).getAll();
-        req.onsuccess = () => resolve(req.result || []);
-        req.onerror = () => reject(req.error);
-      });
-    }
-
-    function dbPut(storeName, item) {
-      return new Promise((resolve, reject) => {
-        const tx = db.transaction(storeName, "readwrite");
-        const req = tx.objectStore(storeName).put(item);
-        req.onsuccess = () => resolve(item);
-        req.onerror = () => reject(req.error);
-      });
-    }
-
-    function dbGetSetting(key, fallback = null) {
-      return new Promise((resolve) => {
-        const tx = db.transaction("settings", "readonly");
-        const req = tx.objectStore("settings").get(key);
-        req.onsuccess = () => resolve(req.result ? req.result.value : fallback);
-        req.onerror = () => resolve(fallback);
-      });
-    }
-
-    function dbSetSetting(key, value) {
-      return dbPut("settings", { key, value });
-    }
-
-    /* =========================================================================
-       3. APP STATE & UTILITIES
-       ========================================================================= */
-    let transactions = [];
-    let shifts = [];
-    let tiers = [];
-    let ownerUnlocked = false;
-    let currentTxType = "Cash-In";
-    let deferredInstallPrompt = null;
-
-    function fmtPeso(n) {
-      const val = Number(n) || 0;
-      return "₱" + val.toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-    }
-
-    function pad2(n) { return String(n).padStart(2, "0"); }
-
-    function toLocalTimestamp(dateObj = new Date()) {
-      return (
-        dateObj.getFullYear() + "-" +
-        pad2(dateObj.getMonth() + 1) + "-" +
-        pad2(dateObj.getDate()) + " " +
-        pad2(dateObj.getHours()) + ":" +
-        pad2(dateObj.getMinutes()) + ":" +
-        pad2(dateObj.getSeconds())
-      );
-    }
-
-    function getDateKey(ts) { return (ts || "").slice(0, 10); }
-
-    function formatLongDate(dateKey) {
-      if (!dateKey) return "Unknown Date";
-      const [y, m, d] = dateKey.split("-").map(Number);
-      return new Date(y, m - 1, d).toLocaleDateString("en-US", {
-        weekday: "long",
-        month: "long",
-        day: "numeric",
-        year: "numeric"
-      });
-    }
-
-    function escapeHtml(str) {
-      return String(str ?? "")
-        .replace(/&/g, "&amp;")
-        .replace(/</g, "&lt;")
-        .replace(/>/g, "&gt;")
-        .replace(/"/g, "&quot;");
-    }
-
-    function uid(prefix = "id") {
-      return prefix + "_" + Date.now() + "_" + Math.random().toString(36).slice(2, 8);
-    }
-
-    /* =========================================================================
-       4. FEE TIERS & AUTO-CALCULATION
-       ========================================================================= */
-    async function loadTiers() {
-      const saved = await dbGetSetting("tiers", null);
-      if (!saved || !Array.isArray(saved) || saved.length === 0) {
-        tiers = [...DEFAULT_TIERS];
-        await dbSetSetting("tiers", tiers);
-        return;
-      }
-      const maxCovered = Math.max(...saved.map((t) => Number(t.max) || 0));
-      if (maxCovered < 50000) {
-        tiers = [...DEFAULT_TIERS];
-        await dbSetSetting("tiers", tiers);
-      } else {
-        tiers = saved;
-      }
-    }
-
-    function autoCalcFee() {
-      const amt = parseFloat(document.getElementById("txAmount").value);
-      const feeEl = document.getElementById("txFee");
-      if (!amt || amt <= 0) { feeEl.value = ""; return; }
-      const match = tiers.find((t) => amt >= Number(t.min) && amt <= Number(t.max));
-      if (match) {
-        feeEl.value = Number(match.fee).toFixed(2);
-      } else {
-        feeEl.value = Math.min(1000, Math.ceil(amt / 500) * 10).toFixed(2);
-      }
-    }
-
-    function renderTiersEditor() {
-      const tbody = document.getElementById("tiersTableBody");
-      tbody.innerHTML = tiers.map((t, i) => `
-        <tr>
-          <td><input type="number" id="tierMin_${i}" value="${t.min}" min="1" step="1" style="padding:6px 8px;" /></td>
-          <td><input type="number" id="tierMax_${i}" value="${t.max}" min="1" step="1" style="padding:6px 8px;" /></td>
-          <td><input type="number" id="tierFee_${i}" value="${t.fee}" min="0" step="0.01" style="padding:6px 8px;" /></td>
-        </tr>
-      `).join("");
-    }
-
-    async function saveEditedTiers() {
-      const updated = tiers.map((_, i) => ({
-        min: Number(document.getElementById(`tierMin_${i}`).value) || 0,
-        max: Number(document.getElementById(`tierMax_${i}`).value) || 0,
-        fee: Number(document.getElementById(`tierFee_${i}`).value) || 0
-      }));
-      tiers = updated;
-      await dbSetSetting("tiers", tiers);
-      alert("Service fee schedule saved.");
-    }
-
-    async function resetDefaultTiers() {
-      if (!confirm("Reset service fees to the default ₱1 – ₱50,000 schedule?")) return;
-      tiers = [...DEFAULT_TIERS];
-      await dbSetSetting("tiers", tiers);
-      renderTiersEditor();
-      alert("Fee schedule reset to ₱1 – ₱50,000 defaults.");
-    }
-
-    /* =========================================================================
-       5. SIGNATURE PAD
-       ========================================================================= */
-    const sigCanvas = document.getElementById("sigCanvas");
-    const sigCtx = sigCanvas.getContext("2d");
-    let isDrawing = false;
-    let hasSignature = false;
-
-    function resizeSignatureCanvas() {
-      const ratio = Math.max(window.devicePixelRatio || 1, 1);
-      const rect = sigCanvas.getBoundingClientRect();
-      if (!rect.width) return;
-      sigCanvas.width = rect.width * ratio;
-      sigCanvas.height = 150 * ratio;
-      sigCtx.scale(ratio, ratio);
-      sigCtx.lineWidth = 2.4;
-      sigCtx.lineCap = "round";
-      sigCtx.lineJoin = "round";
-      sigCtx.strokeStyle = "#0f172a";
-      hasSignature = false;
-    }
-
-    function getCanvasPos(e) {
-      const rect = sigCanvas.getBoundingClientRect();
-      const point = e.touches ? e.touches[0] : e;
-      return { x: point.clientX - rect.left, y: point.clientY - rect.top };
-    }
-
-    function startDraw(e) {
-      isDrawing = true;
-      hasSignature = true;
-      const pos = getCanvasPos(e);
-      sigCtx.beginPath();
-      sigCtx.moveTo(pos.x, pos.y);
-    }
-
-    function moveDraw(e) {
-      if (!isDrawing) return;
-      if (e.cancelable) e.preventDefault();
-      const pos = getCanvasPos(e);
-      sigCtx.lineTo(pos.x, pos.y);
-      sigCtx.stroke();
-    }
-
-    function endDraw() { isDrawing = false; }
-
-    sigCanvas.addEventListener("mousedown", startDraw);
-    sigCanvas.addEventListener("mousemove", moveDraw);
-    window.addEventListener("mouseup", endDraw);
-    sigCanvas.addEventListener("touchstart", startDraw, { passive: true });
-    sigCanvas.addEventListener("touchmove", moveDraw, { passive: false });
-    sigCanvas.addEventListener("touchend", endDraw);
-
-    function clearSignature() {
-      const rect = sigCanvas.getBoundingClientRect();
-      sigCtx.clearRect(0, 0, rect.width || sigCanvas.width, 150);
-      hasSignature = false;
-    }
-
-    /* =========================================================================
-       6. COUNTER & DUPLICATE REFERENCE CHECK
-       ========================================================================= */
-    function setTxType(type) {
-      currentTxType = type;
-      document.getElementById("btnTypeIn").className = "type-btn" + (type === "Cash-In" ? " active-in" : "");
-      document.getElementById("btnTypeOut").className = "type-btn" + (type === "Cash-Out" ? " active-out" : "");
-    }
-
-    function checkDuplicateRef() {
-      const raw = document.getElementById("txRef").value.trim();
-      const box = document.getElementById("dupAlert");
-      if (!raw) { box.classList.remove("show"); return null; }
-      const dup = transactions.find((t) => String(t.reference || "").trim() === raw);
-      if (dup) {
-        box.innerHTML = `<strong>Duplicate Reference Alert:</strong> Reference <code>${escapeHtml(raw)}</code> was already recorded on <strong>${escapeHtml(dup.timestamp)}</strong> (${escapeHtml(dup.type)} of ${fmtPeso(dup.amount)}).`;
-        box.classList.add("show");
-        return dup;
-      }
-      box.classList.remove("show");
-      return null;
-    }
-
-    function getActiveShift() {
-      return shifts.find((s) => !s.endedAt && !s.ended_at) || null;
-    }
-
-    async function handleRecordTx(e) {
-      e.preventDefault();
-      const ref = document.getElementById("txRef").value.trim();
-      const phone = document.getElementById("txPhone").value.trim();
-      const amount = parseFloat(document.getElementById("txAmount").value) || 0;
-      const fee = parseFloat(document.getElementById("txFee").value) || 0;
-      const customer = document.getElementById("txCustomer").value.trim();
-      const address = document.getElementById("txAddress").value.trim();
-
-      if (!ref || amount <= 0) return;
-
-      const existing = checkDuplicateRef();
-      if (existing && !confirm(`Reference ${ref} already exists (${existing.timestamp}). Record anyway?`)) {
-        return;
-      }
-
-      const activeShift = getActiveShift();
-      const signature = hasSignature ? sigCanvas.toDataURL("image/png") : "";
-
-      const tx = {
-        id: uid("tx"),
-        timestamp: toLocalTimestamp(new Date()),
-        reference: ref,
-        phone,
-        type: currentTxType,
-        amount,
-        fee,
-        customer,
-        address,
-        tender: activeShift ? activeShift.tender : "",
-        shiftId: activeShift ? activeShift.id : "",
-        signature,
-        status: "OK"
-      };
-
-      await dbPut("transactions", tx);
-      transactions.unshift(tx);
-
-      document.getElementById("txForm").reset();
-      document.getElementById("dupAlert").classList.remove("show");
-      clearSignature();
-      setTxType("Cash-In");
-
-      refreshAllViews();
-      syncNow(false);
-    }
-
-    /* =========================================================================
-       7. SHIFT MANAGEMENT
-       ========================================================================= */
-    async function handleStartShift(e) {
-      e.preventDefault();
-      const tender = document.getElementById("shiftTenderName").value.trim();
-      if (!tender) return;
-      const openCash = parseFloat(document.getElementById("shiftOpenCash").value) || 0;
-      const openGcash = parseFloat(document.getElementById("shiftOpenGcash").value) || 0;
-
-      const shift = {
-        id: uid("sh"),
-        tender,
-        startedAt: toLocalTimestamp(new Date()),
-        endedAt: "",
-        openCash,
-        openGcash
-      };
-
-      await dbPut("shifts", shift);
-      shifts.unshift(shift);
-      document.getElementById("shiftTenderName").value = "";
-      refreshAllViews();
-      syncNow(false);
-    }
-
-    async function handleEndShift() {
-      const active = getActiveShift();
-      if (!active) return;
-      if (!confirm(`End shift for ${active.tender}?`)) return;
-      active.endedAt = toLocalTimestamp(new Date());
-      await dbPut("shifts", active);
-      refreshAllViews();
-      syncNow(false);
-    }
-
-    function renderShiftTab() {
-      const active = getActiveShift();
-      const warn = document.getElementById("shiftWarningBanner");
-      const label = document.getElementById("activeTenderLabel");
-
-      if (active) {
-        warn.classList.add("hidden");
-        label.textContent = `Tender: ${active.tender}`;
-        document.getElementById("startShiftCard").classList.add("hidden");
-        document.getElementById("activeShiftCard").classList.remove("hidden");
-        document.getElementById("curShiftTender").textContent = active.tender;
-        document.getElementById("curShiftStarted").textContent = `Started: ${active.startedAt}`;
-
-        const shiftTxs = transactions.filter((t) => (t.shiftId || t.shift_id) === active.id);
-        let cash = Number(active.openCash ?? active.open_cash ?? 0);
-        let gcash = Number(active.openGcash ?? active.open_gcash ?? 0);
-        let fees = 0;
-
-        shiftTxs.forEach((t) => {
-          const a = Number(t.amount) || 0;
-          const f = Number(t.fee) || 0;
-          fees += f;
-          if (t.type === "Cash-In") { cash += a + f; gcash -= a; }
-          else { cash -= a - f; gcash += a; }
-        });
-
-        document.getElementById("curShiftCash").textContent = fmtPeso(cash);
-        document.getElementById("curShiftGcash").textContent = fmtPeso(gcash);
-        document.getElementById("curShiftFees").textContent = fmtPeso(fees);
-      } else {
-        warn.classList.remove("hidden");
-        label.textContent = "No active shift";
-        document.getElementById("startShiftCard").classList.remove("hidden");
-        document.getElementById("activeShiftCard").classList.add("hidden");
-      }
-
-      const histEl = document.getElementById("shiftHistoryList");
-      if (shifts.length === 0) {
-        histEl.innerHTML = `<p class="muted">No shifts recorded yet.</p>`;
-        return;
-      }
-
-      histEl.innerHTML = shifts.slice(0, 15).map((s) => {
-        const endStr = s.endedAt || s.ended_at;
-        return `
-          <div style="padding:10px 0; border-bottom:1px solid var(--border); display:flex; justify-content:space-between; align-items:center; gap:8px;">
-            <div>
-              <strong>${escapeHtml(s.tender)}</strong>
-              <div class="muted">${escapeHtml(s.startedAt || s.started_at)} ${endStr ? "→ " + escapeHtml(endStr) : ""}</div>
-            </div>
-            <span class="badge ${endStr ? "badge-out" : "badge-in"}">${endStr ? "Closed" : "Active"}</span>
-          </div>
-        `;
-      }).join("");
-    }
-
-    /* =========================================================================
-       8. DAILY SUMMARY TAB (CLEANED UP — NO PER-TENDER TABLES)
-       ========================================================================= */
-    function populateSummaryTenderFilter() {
-      const sel = document.getElementById("summaryTenderFilter");
-      const current = sel.value || "ALL";
-      const names = [...new Set(transactions.map((t) => (t.tender || "").trim()).filter(Boolean))].sort();
-      sel.innerHTML = `<option value="ALL">All tenders</option>` +
-        names.map((n) => `<option value="${escapeHtml(n)}">${escapeHtml(n)}</option>`).join("");
-      if ([...sel.options].some((o) => o.value === current)) sel.value = current;
-    }
-
-    function renderSummary() {
-      const container = document.getElementById("summaryCardsContainer");
-      const filter = document.getElementById("summaryTenderFilter").value || "ALL";
-
-      const filtered = filter === "ALL"
-        ? transactions
-        : transactions.filter((t) => (t.tender || "").trim() === filter);
-
-      if (filtered.length === 0) {
-        container.innerHTML = `<div class="card"><p class="muted" style="margin:0;">No transactions found for this selection.</p></div>`;
-        return;
-      }
-
-      const byDate = {};
-      filtered.forEach((t) => {
-        const dk = getDateKey(t.timestamp);
-        if (!byDate[dk]) byDate[dk] = [];
-        byDate[dk].push(t);
-      });
-
-      const dateKeys = Object.keys(byDate).sort((a, b) => b.localeCompare(a));
-
-      container.innerHTML = dateKeys.map((dk) => {
-        const list = byDate[dk];
-        let cashIn = 0, cashOut = 0, fees = 0;
-        const tenderCounts = {};
-
-        list.forEach((t) => {
-          const a = Number(t.amount) || 0;
-          const f = Number(t.fee) || 0;
-          fees += f;
-          if (t.type === "Cash-In") cashIn += a;
-          else cashOut += a;
-          const tn = (t.tender || "").trim() || "No shift";
-          tenderCounts[tn] = (tenderCounts[tn] || 0) + 1;
-        });
-
-        const netCash = cashIn + fees - cashOut;
-        const netGcash = cashOut - cashIn;
-        const breakdownLine = Object.entries(tenderCounts)
-          .map(([k, v]) => `${escapeHtml(k)} – ${v}`)
-          .join(" · ");
-
-        return `
-          <div class="card">
-            <div class="date-card-head" style="cursor:default;">
-              <div class="date-card-title">${escapeHtml(formatLongDate(dk))}</div>
-              <span class="tx-count-link">${list.length} transaction${list.length === 1 ? "" : "s"}</span>
-            </div>
-            <div class="stats-row">
-              <div class="stat-box">
-                <div class="stat-label">Cash-In</div>
-                <div class="stat-val">${fmtPeso(cashIn)}</div>
-              </div>
-              <div class="stat-box">
-                <div class="stat-label">Cash-Out</div>
-                <div class="stat-val">${fmtPeso(cashOut)}</div>
-              </div>
-              <div class="stat-box">
-                <div class="stat-label">Service fees</div>
-                <div class="stat-val">${fmtPeso(fees)}</div>
-              </div>
-              <div class="stat-box">
-                <div class="stat-label">Net Cash Flow</div>
-                <div class="stat-val dark">${fmtPeso(netCash)}</div>
-              </div>
-              <div class="stat-box">
-                <div class="stat-label">Net GCash Flow</div>
-                <div class="stat-val dark">${fmtPeso(netGcash)}</div>
-              </div>
-            </div>
-            <div class="muted" style="margin-top:6px;"><strong>Transactions by tender:</strong> ${breakdownLine}</div>
-          </div>
-        `;
-      }).join("");
-    }
-
-    /* =========================================================================
-       9. TRANSACTION LOG & VIEW DETAILS MODAL
-       ========================================================================= */
-    const collapsedDates = {};
-
-    function toggleDateCard(dk) {
-      collapsedDates[dk] = !collapsedDates[dk];
-      renderLog();
-    }
-
-    function renderLog() {
-      const container = document.getElementById("logCardsContainer");
-      const q = (document.getElementById("logSearchInput").value || "").trim().toLowerCase();
-
-      const filtered = q
-        ? transactions.filter((t) =>
-            String(t.reference || "").toLowerCase().includes(q) ||
-            String(t.customer || "").toLowerCase().includes(q) ||
-            String(t.tender || "").toLowerCase().includes(q) ||
-            String(t.phone || "").toLowerCase().includes(q)
-          )
-        : transactions;
-
-      if (filtered.length === 0) {
-        container.innerHTML = `<div class="card"><p class="muted" style="margin:0;">No transactions recorded yet.</p></div>`;
-        return;
-      }
-
-      const byDate = {};
-      filtered.forEach((t) => {
-        const dk = getDateKey(t.timestamp);
-        if (!byDate[dk]) byDate[dk] = [];
-        byDate[dk].push(t);
-      });
-
-      const dateKeys = Object.keys(byDate).sort((a, b) => b.localeCompare(a));
-
-      container.innerHTML = dateKeys.map((dk) => {
-        const list = byDate[dk].sort((a, b) => String(b.timestamp).localeCompare(String(a.timestamp)));
-        const isClosed = !!collapsedDates[dk];
-        let cashIn = 0, cashOut = 0, fees = 0;
-        const tenderCounts = {};
-
-        list.forEach((t) => {
-          const a = Number(t.amount) || 0;
-          const f = Number(t.fee) || 0;
-          fees += f;
-          if (t.type === "Cash-In") cashIn += a;
-          else cashOut += a;
-          const tn = (t.tender || "").trim() || "No shift";
-          tenderCounts[tn] = (tenderCounts[tn] || 0) + 1;
-        });
-
-        const byTenderText = Object.entries(tenderCounts)
-          .map(([k, v]) => `${escapeHtml(k)} – ${v}`)
-          .join(" · ");
-
-        const rowsHtml = list.map((t) => `
-          <tr>
-            <td>${escapeHtml(t.timestamp)}</td>
-            <td>${escapeHtml(t.reference)}</td>
-            <td>${escapeHtml(t.customer || "—")}</td>
-            <td><span class="badge ${t.type === "Cash-In" ? "badge-in" : "badge-out"}">${escapeHtml(t.type)}</span></td>
-            <td>${fmtPeso(t.amount)}</td>
-            <td>${fmtPeso(t.fee)}</td>
-            <td><span class="status-ok">${escapeHtml(t.status || "OK")}</span></td>
-            <td>${escapeHtml(t.tender || "—")}</td>
-            <td><button type="button" class="btn btn-soft btn-sm" onclick="openViewModal('${escapeHtml(t.id)}')">View</button></td>
-          </tr>
-        `).join("");
-
-        return `
-          <div class="card">
-            <div class="date-card-head" onclick="toggleDateCard('${dk}')">
-              <div class="date-card-title">
-                <span style="color:var(--blue-bright);">${isClosed ? "▸" : "▾"}</span>
-                <span>${escapeHtml(formatLongDate(dk))}</span>
-              </div>
-              <span class="tx-count-link">${list.length} transaction${list.length === 1 ? "" : "s"}</span>
-            </div>
-
-            ${isClosed ? "" : `
-              <div class="stats-row">
-                <div class="stat-box">
-                  <div class="stat-label">Cash-In</div>
-                  <div class="stat-val">${fmtPeso(cashIn)}</div>
-                </div>
-                <div class="stat-box">
-                  <div class="stat-label">Cash-Out</div>
-                  <div class="stat-val">${fmtPeso(cashOut)}</div>
-                </div>
-                <div class="stat-box">
-                  <div class="stat-label">Service fees</div>
-                  <div class="stat-val">${fmtPeso(fees)}</div>
-                </div>
-              </div>
-              <div class="muted" style="margin-bottom:8px;"><strong>By tender:</strong> ${byTenderText}</div>
-              <div class="table-scroll">
-                <table>
-                  <thead>
-                    <tr>
-                      <th>Timestamp</th>
-                      <th>Reference</th>
-                      <th>Customer</th>
-                      <th>Type</th>
-                      <th>Amount</th>
-                      <th>Fee</th>
-                      <th>Status</th>
-                      <th>Tender</th>
-                      <th>Details</th>
-                    </tr>
-                  </thead>
-                  <tbody>${rowsHtml}</tbody>
-                </table>
-              </div>
-            `}
-          </div>
-        `;
-      }).join("");
-    }
-
-    function openViewModal(id) {
-      const tx = transactions.find((t) => t.id === id);
-      if (!tx) return;
-      const body = document.getElementById("viewModalBody");
-      body.innerHTML = `
-        <div class="detail-line"><strong>Reference:</strong> ${escapeHtml(tx.reference)}</div>
-        <div class="detail-line"><strong>Timestamp:</strong> ${escapeHtml(tx.timestamp)}</div>
-        <div class="detail-line"><strong>Customer:</strong> ${escapeHtml(tx.customer || "—")}</div>
-        <div class="detail-line"><strong>Address:</strong> ${escapeHtml(tx.address || "—")}</div>
-        <div class="detail-line"><strong>Phone:</strong> ${escapeHtml(tx.phone || "—")}</div>
-        <div class="detail-line"><strong>Type:</strong> ${escapeHtml(tx.type)}</div>
-        <div class="detail-line"><strong>Amount:</strong> ${fmtPeso(tx.amount)}</div>
-        <div class="detail-line"><strong>Service charge:</strong> ${fmtPeso(tx.fee)}</div>
-        <div class="detail-line"><strong>Status:</strong> ${escapeHtml(tx.status || "OK")}</div>
-        <div class="detail-line"><strong>Tender:</strong> ${escapeHtml(tx.tender || "—")}</div>
-        <div class="detail-line" style="margin-top:12px;"><strong>Customer Signature</strong></div>
-        <div class="detail-sig-box">
-          ${tx.signature ? `<img src="${tx.signature}" alt="Customer Signature" />` : `<span class="muted">No signature captured</span>`}
-        </div>
-      `;
-      document.getElementById("viewModal").classList.add("open");
-    }
-
-    /* =========================================================================
-       10. CSV EXPORT (EXCEL-SAFE TEXT & BOTTOM TOTALS) & JSON BACKUP
-       ========================================================================= */
-    function csvCell(val) {
-      const s = String(val ?? "").replace(/"/g, '""');
-      return `"${s}"`;
-    }
-
-    function csvTextCell(val) {
-      const clean = String(val ?? "").trim();
-      if (!clean) return `""`;
-      return `"=""${clean.replace(/"/g, '""')}"""`;
-    }
-
-    function exportCsv() {
-      const dateFilter = document.getElementById("csvDateFilter").value;
-      const rowsData = dateFilter
-        ? transactions.filter((t) => getDateKey(t.timestamp) === dateFilter)
-        : [...transactions];
-
-      if (rowsData.length === 0) {
-        alert("No transactions found for the selected export date.");
-        return;
-      }
-
-      rowsData.sort((a, b) => String(a.timestamp).localeCompare(String(b.timestamp)));
-
-      const headers = [
-        "Timestamp",
-        "Reference",
-        "Phone",
-        "Customer",
-        "Address",
-        "Type",
-        "Amount",
-        "Service Fee",
-        "Tender",
-        "Status"
-      ];
-
-      let totalCashIn = 0;
-      let totalCashOut = 0;
-      let totalFees = 0;
-
-      const lines = [headers.map(csvCell).join(",")];
-
-      rowsData.forEach((t) => {
-        const amt = Number(t.amount) || 0;
-        const fee = Number(t.fee) || 0;
-        totalFees += fee;
-        if (t.type === "Cash-In") totalCashIn += amt;
-        else totalCashOut += amt;
-
-        lines.push([
-          csvCell(t.timestamp),
-          csvTextCell(t.reference),
-          csvTextCell(t.phone),
-          csvCell(t.customer),
-          csvCell(t.address),
-          csvCell(t.type),
-          amt.toFixed(2),
-          fee.toFixed(2),
-          csvCell(t.tender),
-          csvCell(t.status || "OK")
-        ].join(","));
-      });
-
-      lines.push("");
-      lines.push([csvCell("TOTAL CASH-IN"), "", "", "", "", "", totalCashIn.toFixed(2), "", "", ""].join(","));
-      lines.push([csvCell("TOTAL CASH-OUT"), "", "", "", "", "", totalCashOut.toFixed(2), "", "", ""].join(","));
-      lines.push([csvCell("TOTAL SERVICE FEES"), "", "", "", "", "", "", totalFees.toFixed(2), "", ""].join(","));
-
-      const csvContent = "\uFEFF" + lines.join("\r\n");
-      const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `sarisafe-transactions-${dateFilter || "all"}.csv`;
-      a.click();
-      URL.revokeObjectURL(url);
-    }
-
-    async function exportJsonBackup() {
-      const pin = await dbGetSetting("ownerPin", "1234");
-      const payload = {
-        app: "SariSafe",
-        exportedAt: new Date().toISOString(),
-        transactions,
-        shifts,
-        tiers,
-        ownerPin: pin
-      };
-      const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `sarisafe-backup-${getDateKey(toLocalTimestamp())}.json`;
-      a.click();
-      URL.revokeObjectURL(url);
-    }
-
-    async function handleRestoreJson(e) {
-      const file = e.target.files[0];
-      if (!file) return;
-      try {
-        const text = await file.text();
-        const data = JSON.parse(text);
-        if (Array.isArray(data.transactions)) {
-          for (const tx of data.transactions) await dbPut("transactions", tx);
+  <div class="card pend-card" id="pendingBox" hidden>
+    <h2>⏳ Pending confirmations <span class="badge pend-badge" id="pendCount">0</span></h2>
+    <p class="note">Cash-Out transactions start as <b>Pending</b>. Verify the GCash receipt first, then tap <b>Mark OK</b> to confirm.</p>
+    <div class="tw" id="pendingList"></div>
+  </div>
+  <div class="card"><h2 id="recentTitle">Today's entries</h2><div class="tw" id="recent"></div></div>
+</section>
+
+<section id="v-shift" hidden></section>
+<section id="v-summary" hidden></section>
+<section id="v-log" hidden></section>
+<section id="v-settings" hidden></section>
+<section id="v-backup" hidden></section>
+</main>
+<div id="printArea"></div>
+<dialog id="dlg"></dialog>
+<div id="okPop" aria-hidden="true"><div><svg viewBox="0 0 52 52"><circle cx="26" cy="26" r="24"/><path d="M14 27l8 8 16-17"/></svg><p>Transaction saved</p></div></div>
+<div id="toast"></div>
+
+<script>
+"use strict";
+/* ---------- helpers ---------- */
+const $=s=>document.querySelector(s);
+const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const peso=n=>"₱"+Number(n||0).toLocaleString("en-PH",{minimumFractionDigits:2,maximumFractionDigits:2});
+const fmt=iso=>new Date(iso).toLocaleString("en-PH",{dateStyle:"short",timeStyle:"short"});
+const stamp=iso=>{const d=new Date(iso),p=n=>String(n).padStart(2,"0");return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`};
+const day=iso=>new Date(iso).toLocaleDateString("en-CA");
+const uid=()=>(crypto.randomUUID?crypto.randomUUID():Date.now().toString(36)+Math.random().toString(36).slice(2));
+function toast(m){const t=$("#toast");t.textContent=m;t.style.display="block";clearTimeout(toast.t);toast.t=setTimeout(()=>t.style.display="none",2600)}
+function modal(html,cls=""){const d=$("#dlg");d.className=cls;d.innerHTML=html;if(!d.open)d.showModal();return d}
+const closeModal=()=>$("#dlg").open&&$("#dlg").close();
+async function hashPin(p){try{const b=await crypto.subtle.digest("SHA-256",new TextEncoder().encode("sarisafe"+p));return[...new Uint8Array(b)].map(x=>x.toString(16).padStart(2,"0")).join("")}catch{return"x"+btoa("sarisafe"+p)}}
+
+/* ---------- IndexedDB (FR-04, NFR-05) ---------- */
+let D;
+const rq=r=>new Promise((ok,no)=>{r.onsuccess=()=>ok(r.result);r.onerror=()=>no(r.error)});
+const store=(n,m="readonly")=>D.transaction(n,m).objectStore(n);
+const putRaw=(n,v)=>rq(store(n,"readwrite").put(v));
+const put=(n,v)=>putRaw(n,v).then(r=>{if(n!=="settings")kick();return r});
+const all=n=>rq(store(n).getAll());
+const byRef=r=>rq(store("transactions").index("ref").getAll(r));
+const getSet=async k=>(await rq(store("settings").get(k)))?.value;
+const setSet=(k,value)=>put("settings",{key:k,value});
+function openDB(){return new Promise((ok,no)=>{
+  if(!window.indexedDB)return no(new Error("IndexedDB unavailable"));
+  const r=indexedDB.open("SariSafeDB",1);
+  r.onupgradeneeded=()=>{const d=r.result,t=d.createObjectStore("transactions",{keyPath:"id"});t.createIndex("ref","ref");t.createIndex("ts","ts");d.createObjectStore("shifts",{keyPath:"id"});d.createObjectStore("settings",{keyPath:"key"})};
+  r.onsuccess=()=>ok(r.result);r.onerror=()=>no(r.error)})}
+
+/* ---------- state ---------- */
+const S={role:"tender",tab:"counter",tiers:[],shift:null,manualFee:false,signed:false,alerted:""};
+const DEFAULT_TIERS=Array.from({length:100},(_,i)=>({min:i*500+1,max:(i+1)*500,fee:(i+1)*10}));
+const TABS={tender:[["counter","Counter"],["shift","Shift"]],owner:[["counter","Counter"],["shift","Shift"],["summary","Summary"],["log","Log"],["settings","Fees"],["backup","Backup"]]};
+
+/* ---------- fee tiers & balances (FR-09, FR-11) ---------- */
+const calcFee=a=>{const t=S.tiers.find(x=>a>=x.min&&a<=x.max)||S.tiers.find((x,i)=>i>0&&a>S.tiers[i-1].max&&a<x.min);return t?t.fee:null};
+const eff=t=>t.type==="Cash-In"?{c:t.amount+t.fee,w:-t.amount}:{c:-t.amount,w:t.amount+t.fee};
+const counted=t=>t.status==="OK";
+function balances(sh,txs){let c=sh.startCash,w=sh.startWallet;txs.filter(t=>t.shiftId===sh.id&&counted(t)).forEach(t=>{const e=eff(t);c+=e.c;w+=e.w});return{c,w}}
+async function refreshShift(){const s=(await all("shifts")).sort((a,b)=>a.startedAt<b.startedAt?1:-1);S.shift=s.find(x=>!x.endedAt&&x.device===S.deviceId)||null;banners()}
+async function loadTiers(){
+  const saved=await getSet("tiers");
+  const isLegacyDefault=Array.isArray(saved)&&saved.length===6&&saved.every((t,i)=>t.min===i*500+1&&t.max===(i+1)*500&&t.fee===(i+1)*10);
+  if(!saved||isLegacyDefault){
+    S.tiers=DEFAULT_TIERS.map(t=>({...t}));
+    if(isLegacyDefault)await setSet("tiers",S.tiers);
+  }else{
+    S.tiers=saved;
+  }
+}
+
+/* ---------- navigation / roles (FR-05, FR-07) ---------- */
+function nav(){
+  const IC={counter:"M3 11l9-8 9 8v10a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z",shift:"M12 7v5l3 2M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18z",summary:"M4 20V10M10 20V4M16 20v-7M22 20H2",log:"M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01",settings:"M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6",backup:"M12 3v12m0 0l-4-4m4 4l4-4M4 21h16"};
+  $("#nav").innerHTML=TABS[S.role].map(([k,l])=>`<button data-tab="${k}" class="${S.tab===k?"on":""}"><svg viewBox="0 0 24 24"><path d="${IC[k]}"/></svg><span>${l}</span></button>`).join("");
+  $("#roleBadge").textContent=S.role==="owner"?"Store Owner":"Store Tender";
+  $("#ownerBtn").textContent=S.role==="owner"?"Lock owner view":"Owner login";
+}
+function show(tab){
+  if(S.role!=="owner"&&!["counter","shift"].includes(tab))tab="counter";
+  S.tab=tab;document.querySelectorAll("main>section").forEach(s=>s.hidden=s.id!=="v-"+tab);nav();
+  ({counter:renderRecent,shift:renderShift,summary:renderSummary,log:renderLog,settings:renderSettings,backup:renderBackup})[tab]();
+  if(tab==="log"||tab==="summary")syncNow();
+}
+$("#nav").onclick=e=>{const b=e.target.closest("button[data-tab]");if(b)show(b.dataset.tab)};
+$("#ownerBtn").onclick=()=>{
+  if(S.role==="owner"){S.role="tender";show("counter");return}
+  let pin="";
+  const d=modal(`<div class="pinbox"><div class="lock">🔒</div><h3>Store Owner</h3><p class="note">Enter your 4-digit PIN</p>
+   <div class="dots" id="dots"><i></i><i></i><i></i><i></i></div><p id="pinErr" class="pinErr" aria-live="polite"></p>
+   <div class="pad">${[1,2,3,4,5,6,7,8,9].map(n=>`<button type="button" data-k="${n}">${n}</button>`).join("")}<button type="button" class="x" data-k="cancel">Cancel</button><button type="button" class="x" data-k="0">0</button><button type="button" class="x" data-k="back" aria-label="Delete">⌫</button></div></div>`,"pin");
+  const paint=()=>d.querySelectorAll("#dots i").forEach((x,i)=>x.classList.toggle("on",i<pin.length));
+  const press=async k=>{
+    if(k==="cancel"){closeModal();return}
+    if(k==="back")pin=pin.slice(0,-1);else if(/^\d$/.test(k)&&pin.length<4)pin+=k;
+    $("#pinErr").textContent="";paint();
+    if(pin.length<4)return;
+    if(await hashPin(pin)===await getSet("pin")){closeModal();S.role="owner";show("summary");banners()}
+    else{const dots=$("#dots");$("#pinErr").textContent="Invalid PIN. Try again.";dots.classList.remove("bad");void dots.offsetWidth;dots.classList.add("bad");pin="";setTimeout(()=>{dots.classList.remove("bad");paint()},400)}
+  };
+  const key=e=>{if(e.key==="Backspace")press("back");else if(/^\d$/.test(e.key))press(e.key)};
+  document.addEventListener("keydown",key);
+  d.addEventListener("close",()=>document.removeEventListener("keydown",key),{once:true});
+  d.querySelector(".pad").onclick=e=>{const k=e.target.dataset.k;if(k!==undefined)press(k)};
+};
+async function banners(){
+  let h="";
+  if(!S.shift)h+=`<div class="warn">No shift is open on this device. <a href="#shift" id="goShift" style="font-weight:700;text-decoration:underline;color:inherit">Open the Shift tab to enter your Tender name and start a shift</a> before recording transactions.</div>`;
+  if(S.role==="owner"){
+    if(await getSet("pinDefault"))h+=`<div class="warn">You are still using the default PIN (1234). Change it under Fees &amp; PIN.</div>`;
+    const e=await storageInfo();if(e&&e.pct>=80)h+=`<div class="warn">Browser storage is ${e.pct.toFixed(0)}% full. Export a backup now (Backup tab).</div>`;
+  }
+  $("#banners").innerHTML=h;
+  const gs=$("#goShift");if(gs)gs.onclick=e=>{e.preventDefault();show("shift")};
+}
+
+/* ---------- signature pad (FR-08) ---------- */
+const cv=$("#sig"),cx=cv.getContext("2d");let drawing=false;
+cx.lineWidth=2.5;cx.lineCap="round";cx.strokeStyle="#14213d";
+const pos=e=>{const r=cv.getBoundingClientRect();return[(e.clientX-r.left)*cv.width/r.width,(e.clientY-r.top)*cv.height/r.height]};
+cv.onpointerdown=e=>{drawing=true;cv.setPointerCapture(e.pointerId);const[x,y]=pos(e);cx.beginPath();cx.moveTo(x,y);cx.lineTo(x+.1,y);cx.stroke();S.signed=true};
+cv.onpointermove=e=>{if(!drawing)return;const[x,y]=pos(e);cx.lineTo(x,y);cx.stroke()};
+cv.onpointerup=cv.onpointercancel=()=>drawing=false;
+function clearSig(){cx.clearRect(0,0,cv.width,cv.height);S.signed=false}
+$("#sigClear").onclick=clearSig;
+
+/* ---------- duplicate lookup (FR-01, FR-02, NFR-01) ---------- */
+async function findDup(ref){return(await byRef(ref)).filter(t=>t.kind!=="correction")}
+function showDup(hits){
+  const prev=hits.map(t=>`<li>${fmt(t.ts)} – ${esc(t.type)} ${peso(t.amount)} (<span class="st ${t.status}">${t.status}</span>)</li>`).join("");
+  const d=modal(`<h3>⚠ Duplicate reference number!</h3><p>This 13-digit reference was already recorded:</p><ul>${prev}</ul>
+  <p><b>Do not process this transaction.</b></p>
+  <div class="btns"><button class="btn red" id="dCancel">Cancel entry</button><button class="btn sec" id="dLog">Log as Duplicate attempt</button></div>`,"alert");
+  d.querySelector("#dCancel").onclick=()=>{$("#ref").value="";S.alerted="";indicate("");syncStatusByType();closeModal();$("#ref").focus()};
+  d.querySelector("#dLog").onclick=()=>{$("#status").value="Duplicate";$("#status").disabled=true;$("#statusNote").textContent="Flagged as Duplicate attempt.";closeModal();$("#amount").focus()};
+}
+function indicate(ref,ms,hits){
+  const el=$("#refInd");el.className="";
+  if(ref.length<13){el.textContent=ref.length?`${ref.length}/13 digits entered`:"Enter the full 13-digit reference number.";return}
+  if(hits&&hits.length){el.className="dup";el.textContent=`DUPLICATE – already recorded ${fmt(hits[0].ts)} (checked in ${ms} ms)`}
+  else{el.className="ok";el.textContent=`No local duplicate found (checked in ${ms} ms)`}
+}
+$("#ref").oninput=async e=>{
+  const v=e.target.value=e.target.value.replace(/\D/g,"").slice(0,13);
+  if(v.length<13){S.alerted="";indicate(v);syncStatusByType();return}
+  const t0=performance.now(),hits=await findDup(v),ms=Math.round(performance.now()-t0);
+  indicate(v,ms,hits);
+  if(hits.length&&S.alerted!==v){S.alerted=v;showDup(hits)}
+  else if(!hits.length){S.alerted="";syncStatusByType()}
+};
+
+/* ---------- transaction type status rule (Cash-In = OK only, Cash-Out = Pending first) ---------- */
+function syncStatusByType(){
+  const txType=document.querySelector("input[name=type]:checked")?.value||"Cash-In";
+  const st=$("#status"),sn=$("#statusNote");
+  st.disabled=true;
+  if(st.value==="Duplicate"&&S.alerted){
+    sn.textContent="Flagged as Duplicate attempt.";
+    return;
+  }
+  if(txType==="Cash-Out"){
+    st.value="Pending";
+    sn.textContent="Cash-Out is locked to Pending until the tender checks and confirms it.";
+  }else{
+    st.value="OK";
+    sn.textContent="Cash-In is automatically set to OK only.";
+  }
+}
+document.querySelectorAll("input[name=type]").forEach(r=>r.addEventListener("change",syncStatusByType));
+
+/* ---------- fee auto-calc with override (FR-09) ---------- */
+$("#amount").oninput=()=>{
+  if(S.manualFee)return;const a=parseFloat($("#amount").value),f=a>0?calcFee(a):null;
+  $("#fee").value=f===null?"":f;$("#feeNote").textContent=a>0?(f===null?"(no tier – enter manually)":"(auto)"):"";
+};
+$("#fee").oninput=()=>{S.manualFee=$("#fee").value!=="";$("#feeAuto").hidden=!S.manualFee;if(S.manualFee)$("#feeNote").textContent="(manual override)";else $("#amount").oninput()};
+$("#feeAuto").onclick=()=>{S.manualFee=false;$("#feeAuto").hidden=true;$("#fee").value="";$("#amount").oninput()};
+
+function resetForm(){
+  ["ref","amount","fee","phone","cname","addr"].forEach(i=>$("#"+i).value="");
+  document.querySelector('input[name=type][value="Cash-In"]').checked=true;
+  $("#custAck").checked=false;
+  S.manualFee=false;$("#feeAuto").hidden=true;S.alerted="";$("#feeNote").textContent="";
+  $("#status").value="OK";syncStatusByType();clearSig();indicate("");
+}
+$("#resetTx").onclick=resetForm;
+
+/* ---------- record transaction (FR-03, FR-10) ---------- */
+$("#saveTx").onclick=async()=>{
+  const txType=document.querySelector("input[name=type]:checked").value;
+  const ref=$("#ref").value,amount=parseFloat($("#amount").value),fee=parseFloat($("#fee").value||"0"),phone=$("#phone").value;
+  const status=$("#status").value==="Duplicate"?"Duplicate":(txType==="Cash-Out"?"Pending":"OK");
+  const err=!/^\d{13}$/.test(ref)?"Reference number must be exactly 13 digits."
+    :!(amount>0)?"Enter a valid amount."
+    :!$("#cname").value.trim()?"Enter the customer's name."
+    :!(fee>=0)?"Enter a valid service fee."
+    :!/^09\d{9}$/.test(phone)?"Phone number must be 11 digits starting with 09."
+    :!S.signed?"Customer signature is required."
+    :!$("#custAck").checked?"Please confirm that the mobile number and amount are accurate."
+    :null;
+  if(err){toast(err);return}
+  const hits=await findDup(ref);
+  if(hits.length&&status!=="Duplicate"){showDup(hits);return}
+  const t={id:uid(),ts:new Date().toISOString(),ref,type:txType,amount,fee,phone,status,name:$("#cname").value.trim(),addr:$("#addr").value.trim(),
+    sig:cv.toDataURL("image/png"),shiftId:S.shift?.id||null,tender:S.shift?.tender||"",kind:"sale",device:S.deviceId,statusHistory:[{status,ts:new Date().toISOString()}]};
+  await put("transactions",t);resetForm();renderRecent();showReceipt(t);
+};
+
+/* ---------- recent list (today / active shift only), status update, corrections (FR-10) ---------- */
+function txRowHtml(t,fixed){
+  return `<tr><td>${fmt(t.ts)}</td><td>${t.ref}</td><td>${t.kind==="correction"?"Correction":t.type}</td><td>${peso(t.amount)}</td><td class="st ${t.status}">${t.status}</td><td>
+   ${t.status==="Pending"?`<button class="btn grn sm" data-ok="${t.id}">Mark OK</button> `:""}
+   ${t.kind==="sale"&&t.status!=="Duplicate"&&!fixed.has(t.id)?`<button class="btn sec sm" data-fix="${t.id}">Correct</button>`:""}</td></tr>`;
+}
+async function handleTxAction(e,refreshFn){
+  const ok=e.target.dataset.ok,fx=e.target.dataset.fix;
+  if(ok){const t=(await all("transactions")).find(x=>x.id===ok);t.status="OK";if(S.shift&&!t.shiftId){t.shiftId=S.shift.id;t.tender=S.shift.tender}t.dirty=true;t.statusHistory.push({status:"OK",ts:new Date().toISOString()});await put("transactions",t);await refreshFn();toast("Confirmed OK.")}
+  if(fx){const t=(await all("transactions")).find(x=>x.id===fx);
+    const d=modal(`<h3>Correct entry</h3><p class="note">The original record is kept. A new offsetting entry reverses ${peso(t.amount)} (${t.type}, ref ${t.ref}). Record the right values as a new transaction afterward.</p>
+    <label for="cn">Reason for correction (required)</label><textarea id="cn" rows="3"></textarea><div class="btns"><button class="btn" id="cOk">Log correction</button><button class="btn sec" id="cNo">Cancel</button></div>`);
+    d.querySelector("#cNo").onclick=closeModal;
+    d.querySelector("#cOk").onclick=async()=>{const n=d.querySelector("#cn").value.trim();if(!n){toast("An explanatory note is required.");return}
+      await put("transactions",{id:uid(),ts:new Date().toISOString(),ref:t.ref,type:t.type,amount:-t.amount,fee:-t.fee,phone:t.phone,name:t.name,addr:t.addr,status:"OK",sig:"",
+        shiftId:S.shift?.id||null,tender:S.shift?.tender||"",kind:"correction",device:S.deviceId,corrects:t.id,note:n,statusHistory:[{status:"OK",ts:new Date().toISOString()}]});
+      closeModal();await refreshFn();toast("Correction logged.")};
+  }
+}
+async function renderRecent(){
+  const txs=(await all("transactions")).sort((a,b)=>a.ts<b.ts?1:-1);
+  walletCard(txs);
+  const fixed=new Set(txs.filter(t=>t.kind==="correction").map(t=>t.corrects));
+  const todayStr=day(new Date().toISOString());
+  const visible=txs.filter(t=>day(t.ts)===todayStr&&(S.shift?t.shiftId===S.shift.id:(!t.shiftId&&t.device===S.deviceId)));
+  const pend=txs.filter(t=>t.status==="Pending"&&day(t.ts)===todayStr);
+  $("#pendingBox").hidden=!pend.length;
+  $("#pendCount").textContent=pend.length;
+  $("#pendingList").innerHTML=pend.length?`<table><tr><th>Time</th><th>Reference</th><th>Type</th><th>Amount</th><th>Status</th><th></th></tr>`+pend.map(t=>txRowHtml(t,fixed)).join("")+`</table>`:"";
+  $("#recentTitle").textContent=S.shift?`Today's shift entries (${S.shift.tender})`:"Today's entries";
+  $("#recent").innerHTML=visible.length?`<table><tr><th>Time</th><th>Reference</th><th>Type</th><th>Amount</th><th>Status</th><th></th></tr>`+
+   visible.map(t=>txRowHtml(t,fixed)).join("")+`</table>`
+   :`<p class="note">${S.shift?"No transactions recorded in this shift yet.":"No transactions recorded today yet."}</p>`;
+}
+$("#pendingList").onclick=e=>handleTxAction(e,renderRecent);
+$("#recent").onclick=e=>handleTxAction(e,renderRecent);
+
+/* ---------- shift & cash float reconciliation (FR-11) ---------- */
+async function renderShift(){
+  const el=$("#v-shift"),sh=S.shift;
+  if(!sh){el.innerHTML=`<div class="card"><h2>Start shift</h2><label for="sn">Tender name</label><input id="sn" autocomplete="off" placeholder="Enter your name">
+   <div class="row"><div><label for="sc">Starting physical cash float (₱)</label><input id="sc" type="number" min="0" step="0.01"></div>
+   <div><label for="sw">Starting GCash wallet balance (₱)</label><input id="sw" type="number" min="0" step="0.01"></div></div>
+   <div class="btns"><button class="btn" id="sStart">Start shift</button></div></div>`;
+   $("#sStart").onclick=async()=>{const n=$("#sn").value.trim(),c=parseFloat($("#sc").value),w=parseFloat($("#sw").value);
+     if(!n||!(c>=0)||!(w>=0)){toast("Enter the tender name and both starting balances.");return}
+     await put("shifts",{id:uid(),device:S.deviceId,tender:n,startedAt:new Date().toISOString(),startCash:c,startWallet:w});await refreshShift();renderShift();toast("Shift started.")};
+   return}
+  const txs=(await all("transactions")).sort((a,b)=>a.ts<b.ts?1:-1),b=balances(sh,txs);
+  const myTxs=txs.filter(t=>t.shiftId===sh.id);
+  const myPend=myTxs.filter(t=>t.status==="Pending");
+  const fixed=new Set(myTxs.filter(t=>t.kind==="correction").map(t=>t.corrects));
+  el.innerHTML=`<div class="card"><h2>Shift open – ${esc(sh.tender)}</h2><p class="note">Started ${fmt(sh.startedAt)}</p>
+   <div class="kpi"><div>Starting cash<b>${peso(sh.startCash)}</b></div><div>Starting GCash<b>${peso(sh.startWallet)}</b></div>
+   <div>Expected cash now<b>${peso(b.c)}</b></div><div>Expected GCash now<b>${peso(b.w)}</b></div></div></div>
+   <div class="card"><h2>Close shift</h2>
+   ${myPend.length?`<div class="warn" style="margin-bottom:12px">You still have <b>${myPend.length} Pending</b> transaction${myPend.length===1?"":"s"} in this shift. Confirm (<b>Mark OK</b>) or log a <b>Correction</b> below before closing your shift.</div>`:""}
+   <div class="row"><div><label for="cc">Counted physical cash (₱)</label><input id="cc" type="number" min="0" step="0.01"></div>
+   <div><label for="cw">Actual GCash wallet balance (₱)</label><input id="cw" type="number" min="0" step="0.01"></div></div>
+   <div class="btns"><button class="btn red" id="sEnd">Close shift &amp; show summary</button></div></div>
+   <div class="card"><h2>My shift transactions (${myTxs.length})</h2><div class="tw" id="shiftTxList">${myTxs.length?`<table><tr><th>Time</th><th>Reference</th><th>Type</th><th>Amount</th><th>Status</th><th></th></tr>`+myTxs.map(t=>txRowHtml(t,fixed)).join("")+`</table>`:`<p class="note">No transactions recorded in this shift yet.</p>`}</div></div>`;
+  $("#shiftTxList").onclick=e=>handleTxAction(e,renderShift);
+  $("#sEnd").onclick=async()=>{const cc=parseFloat($("#cc").value),cw=parseFloat($("#cw").value);
+    if(!(cc>=0)||!(cw>=0)){toast("Enter both counted amounts.");return}
+    const done={...sh,dirty:true,endedAt:new Date().toISOString(),expectedCash:b.c,expectedWallet:b.w,countedCash:cc,countedWallet:cw};
+    await put("shifts",done);await refreshShift();zReading(done,txs);renderShift()};
+}
+function zReading(s,txs){
+  const t=txs.filter(x=>x.shiftId===s.id&&counted(x)),sum=(ty,f)=>t.filter(x=>x.type===ty).reduce((a,x)=>a+x[f],0);
+  const dc=s.countedCash-s.expectedCash,dw=s.countedWallet-s.expectedWallet,lab=d=>d===0?"Balanced":d>0?`Over ${peso(d)}`:`Short ${peso(-d)}`;
+  const d=modal(`<h3>Shift summary</h3><p class="note">${esc(s.tender)} · ${fmt(s.startedAt)} – ${fmt(s.endedAt)}</p>
+   <table><tr><td>Cash-In total</td><td>${peso(sum("Cash-In","amount"))}</td></tr><tr><td>Cash-Out total</td><td>${peso(sum("Cash-Out","amount"))}</td></tr>
+   <tr><td>Service fees</td><td>${peso(sum("Cash-In","fee")+sum("Cash-Out","fee"))}</td></tr>
+   <tr><td>Expected / counted cash</td><td>${peso(s.expectedCash)} / ${peso(s.countedCash)}</td></tr><tr><td><b>Cash result</b></td><td><b>${lab(dc)}</b></td></tr>
+   <tr><td>Expected / actual GCash</td><td>${peso(s.expectedWallet)} / ${peso(s.countedWallet)}</td></tr><tr><td><b>GCash result</b></td><td><b>${lab(dw)}</b></td></tr></table>
+   <div class="btns"><button class="btn" id="zOk">Done</button></div>`);d.querySelector("#zOk").onclick=closeModal;
+}
+
+/* ---------- owner: summary ---------- */
+async function renderSummary(){
+  const el=$("#v-summary"),dtFilter=el.dataset.d||"",tnFilter=el.dataset.t||"";
+  const allTxs=await all("transactions"),allShifts=await all("shifts");
+  const norm=s=>String(s||"").trim();
+  const tenderMap=new Map();
+  [...allShifts.map(s=>s.tender),...allTxs.map(t=>t.tender)].forEach(raw=>{
+    const c=norm(raw);if(!c)return;
+    const k=c.toLowerCase();if(!tenderMap.has(k))tenderMap.set(k,c);
+  });
+  const tenderOptions=[...tenderMap.entries()].sort((a,b)=>a[1].localeCompare(b[1]));
+  const activeTenderName=tnFilter?(tenderMap.get(tnFilter)||tnFilter):"";
+
+  const tenderShiftIds=tnFilter?new Set(allShifts.filter(s=>norm(s.tender).toLowerCase()===tnFilter).map(s=>s.id)):null;
+  const matchTenderTx=t=>!tnFilter||(norm(t.tender).toLowerCase()===tnFilter||(t.shiftId&&tenderShiftIds.has(t.shiftId)));
+  const matchTenderShift=s=>!tnFilter||norm(s.tender).toLowerCase()===tnFilter;
+
+  const filtTxs=allTxs.filter(matchTenderTx);
+  const filtShifts=allShifts.filter(matchTenderShift);
+  const daySet=new Set([...filtTxs.map(t=>day(t.ts)),...filtShifts.map(s=>day(s.startedAt))]);
+  const allDays=[...daySet].sort((a,b)=>a<b?1:-1);
+  const visibleDays=dtFilter?allDays.filter(k=>k===dtFilter):allDays;
+  const today=day(new Date().toISOString()),yest=day(new Date(Date.now()-864e5).toISOString());
+  let n=0;
+  const groups=visibleDays.map(k=>{
+    const d=filtTxs.filter(t=>day(t.ts)===k),ok=d.filter(counted);
+    const sales=ok.filter(t=>t.kind==="sale").length;
+    const sum=(ty,f)=>ok.filter(t=>!ty||t.type===ty).reduce((a,t)=>a+Number(t[f]||0),0);
+    const feesEarned=sum("","fee");
+    const pend=d.filter(t=>t.status==="Pending").length,dups=d.filter(t=>t.status==="Duplicate").length;
+    const dayShifts=filtShifts.filter(s=>day(s.startedAt)===k).sort((a,b)=>a.startedAt>b.startedAt?1:-1);
+    const lastSh=dayShifts[dayShifts.length-1];
+    let endCash="–",endCashSub="No shift recorded",endWallet="–",endWalletSub="No shift recorded";
+    if(lastSh){
+      const b=balances(lastSh,allTxs);
+      if(tnFilter){
+        const tLabel=esc(activeTenderName);
+        if(lastSh.endedAt){
+          endCash=peso(lastSh.countedCash);endCashSub=`After ${tLabel}'s shift close`;
+          endWallet=peso(lastSh.countedWallet);endWalletSub=`After ${tLabel}'s shift close`;
+        }else{
+          endCash=peso(b.c);endCashSub=`${tLabel} (shift still open)`;
+          endWallet=peso(b.w);endWalletSub=`${tLabel} (shift still open)`;
         }
-        if (Array.isArray(data.shifts)) {
-          for (const sh of data.shifts) await dbPut("shifts", sh);
+      }else{
+        if(lastSh.endedAt){
+          endCash=peso(lastSh.countedCash);endCashSub="Latest closed shift";
+          endWallet=peso(lastSh.countedWallet);endWalletSub="Latest closed shift";
+        }else{
+          endCash=peso(b.c);endCashSub="Open shift (expected)";
+          endWallet=peso(b.w);endWalletSub="Open shift (expected)";
         }
-        if (Array.isArray(data.tiers) && data.tiers.length > 0) {
-          await dbSetSetting("tiers", data.tiers);
-        }
-        if (data.ownerPin) {
-          await dbSetSetting("ownerPin", String(data.ownerPin));
-        }
-        transactions = await dbGetAll("transactions");
-        shifts = await dbGetAll("shifts");
-        await loadTiers();
-        refreshAllViews();
-        alert("Backup restored successfully.");
-      } catch (err) {
-        alert("Invalid backup JSON file: " + err.message);
       }
-      e.target.value = "";
     }
+    const lbl=new Date(k+"T00:00:00").toLocaleDateString("en-PH",{weekday:"long",year:"numeric",month:"long",day:"numeric"});
+    const tag=k===today?"Today · ":k===yest?"Yesterday · ":"";
+    const tenderTitleTag=tnFilter?` · <span style="color:var(--blue)">${esc(activeTenderName)}</span>`:"";
+    return `<details class="day" ${n++<2||dtFilter||tnFilter?"open":""}><summary><span>${tag}${lbl}${tenderTitleTag}</span><span class="dc">${sales} transaction${sales===1?"":"s"}</span></summary>
+     <div class="kpi">
+       <div>Transactions<b>${sales}</b></div>
+       <div>Service fees earned<b>${peso(feesEarned)}</b></div>
+       <div>Cash-In<b>${peso(sum("Cash-In","amount"))}</b></div>
+       <div>Cash-Out<b>${peso(sum("Cash-Out","amount"))}</b></div>
+       <div>Physical cash (close)<b>${endCash}</b><small class="note" style="display:block;font-size:.75rem;margin-top:2px">${endCashSub}</small></div>
+       <div>GCash balance (close)<b>${endWallet}</b><small class="note" style="display:block;font-size:.75rem;margin-top:2px">${endWalletSub}</small></div>
+     </div>
+     ${(pend||dups)?`<p class="dev">${pend?`<span class="st Pending">${pend} pending</span>`:""}${pend&&dups?" · ":""}${dups?`<span class="st Duplicate">${dups} duplicate attempt${dups===1?"":"s"}</span>`:""}</p>`:""}
+    </details>`;
+  }).join("");
+  el.innerHTML=`<div class="card"><h2>Daily summary <button class="btn sec sm" id="ssync" style="float:right">⟳ Sync now</button></h2>
+   <div class="row" style="align-items:end;max-width:540px;margin-bottom:6px">
+     <div><label for="sd">Filter by date (optional)</label><input id="sd" type="date" value="${dtFilter}"></div>
+     <div><label for="stender">Filter by tender</label><select id="stender"><option value="">All tenders</option>${tenderOptions.map(([k,label])=>`<option value="${esc(k)}" ${tnFilter===k?"selected":""}>${esc(label)}</option>`).join("")}</select></div>
+   </div>
+   ${(dtFilter||tnFilter)?`<div style="margin-bottom:8px"><button class="btn sec sm" id="sClear">Reset filters</button></div>`:""}
+   <p class="note">${visibleDays.length} day(s) recorded${tnFilter?` for tender <b>${esc(activeTenderName)}</b>`:""}. Corrections are netted into totals.</p>
+   ${groups||`<p class="note">No transactions or shifts found for the selected filter.</p>`}</div>`;
+  $("#ssync").onclick=async()=>{await syncNow();toast("Summary is up to date.");renderSummary()};
+  $("#sd").onchange=e=>{el.dataset.d=e.target.value;renderSummary()};
+  $("#stender").onchange=e=>{el.dataset.t=e.target.value;renderSummary()};
+  if($("#sClear"))$("#sClear").onclick=()=>{el.dataset.d="";el.dataset.t="";renderSummary()};
+}
 
-    /* =========================================================================
-       11. OWNER PIN & NAVIGATION
-       ========================================================================= */
-    document.getElementById("btnOwnerToggle").addEventListener("click", () => {
-      if (ownerUnlocked) {
-        ownerUnlocked = false;
-        applyOwnerState();
-        switchTab("counter");
-      } else {
-        document.getElementById("pinInput").value = "";
-        document.getElementById("pinModal").classList.add("open");
-        setTimeout(() => document.getElementById("pinInput").focus(), 50);
-      }
+/* ---------- owner: transaction log with signatures (FR-08) ---------- */
+async function renderLog(){
+  const el=$("#v-log"),raw=el.dataset.q||"",q=raw.toLowerCase(),stFilter=el.dataset.st||"ALL";
+  const allTxs=(await all("transactions")).sort((a,b)=>a.ts<b.ts?1:-1);
+  const searched=allTxs.filter(t=>!q||t.ref.includes(q)||(t.name||"").toLowerCase().includes(q)||(t.tender||"").toLowerCase().includes(q));
+  const counts={ALL:searched.length,OK:searched.filter(t=>t.status==="OK").length,Pending:searched.filter(t=>t.status==="Pending").length,Duplicate:searched.filter(t=>t.status==="Duplicate").length};
+  const txs=stFilter==="ALL"?searched:searched.filter(t=>t.status===stFilter);
+  const days=new Map();txs.forEach(t=>{const k=day(t.ts);if(!days.has(k))days.set(k,[]);days.get(k).push(t)});
+  const today=day(new Date().toISOString()),yest=day(new Date(Date.now()-864e5).toISOString());
+  const sum=(d,ty,f)=>d.filter(t=>counted(t)&&(!ty||t.type===ty)).reduce((a,t)=>a+t[f],0);
+  let n=0;
+  const groups=[...days].map(([k,d])=>{
+    const sales=d.filter(t=>t.kind!=="correction"&&t.status!=="Duplicate").length,dups=d.filter(t=>t.status==="Duplicate").length,fixes=d.filter(t=>t.kind==="correction").length;
+    const tnd={};d.forEach(t=>{if(t.kind==="correction"||t.status==="Duplicate")return;const tn=t.tender||"No shift";tnd[tn]=(tnd[tn]||0)+1});
+    const lbl=new Date(k+"T00:00:00").toLocaleDateString("en-PH",{weekday:"long",year:"numeric",month:"long",day:"numeric"});
+    const tag=k===today?"Today · ":k===yest?"Yesterday · ":"";
+    return `<details class="day" ${n++<2||q||stFilter!=="ALL"?"open":""}><summary><span>${tag}${lbl}</span><span class="dc">${sales} transaction${sales===1?"":"s"}</span></summary>
+     <div class="kpi"><div>Cash-In<b>${peso(sum(d,"Cash-In","amount"))}</b></div><div>Cash-Out<b>${peso(sum(d,"Cash-Out","amount"))}</b></div><div>Service fees<b>${peso(sum(d,"","fee"))}</b></div></div>
+     <p class="dev"><b>By tender:</b> ${Object.entries(tnd).map(([a,c])=>esc(a)+" – "+c).join(" · ")||"–"}${dups?` · <span class="st Duplicate">${dups} duplicate attempt${dups===1?"":"s"}</span>`:""}${fixes?` · ${fixes} correction${fixes===1?"":"s"}`:""}</p>
+     <div class="tw"><table><tr><th>Timestamp</th><th>Reference</th><th>Customer</th><th>Type</th><th>Amount</th><th>Fee</th><th>Status</th><th>Tender</th><th>Details</th></tr>`+
+     d.map(t=>`<tr><td class="ts">${stamp(t.ts)}</td><td>${t.ref}</td><td>${esc(t.name||"—")}</td><td><span class="pill ${t.type==="Cash-In"?"in":"out"}">${t.kind==="correction"?"Correction":t.type}</span></td><td>${peso(t.amount)}</td><td>${peso(t.fee)}</td><td class="st ${t.status}">${t.status}</td><td>${esc(t.tender||"—")}</td><td><button class="btn sec sm" data-view="${t.id}">View</button></td></tr>`).join("")+`</table></div></details>`;
+  }).join("");
+  el.innerHTML=`<div class="card"><h2>Transaction history <button class="btn sec sm" id="lsync" style="float:right">⟳ Sync now</button></h2>
+   <label for="lq">Search reference, customer, or tender name</label><input id="lq" type="search" autocomplete="off" value="${esc(raw)}" style="max-width:340px">
+   <div class="chips" id="stTabs" style="margin:10px 0 6px">${[["ALL","All"],["OK","OK"],["Pending","Pending"],["Duplicate","Duplicate"]].map(([k,l])=>`<button type="button" data-st="${k}" class="${stFilter===k?"on":""}">${l} (${counts[k]})</button>`).join("")}</div>
+   <p class="note">${txs.length} record(s) across ${days.size} day(s). Records cannot be edited or deleted.</p>${groups||'<p class="note">No transactions found.</p>'}</div>`;
+  $("#lsync").onclick=async()=>{await syncNow();toast("Log is up to date.");renderLog()};
+  $("#lq").oninput=e=>{el.dataset.q=e.target.value;renderLog().then(()=>{const i=$("#lq");i.focus();i.setSelectionRange(99,99)})};
+  $("#stTabs").onclick=e=>{const st=e.target.dataset.st;if(st){el.dataset.st=st;renderLog()}};
+  el.onclick=e=>{const id=e.target.dataset.view;if(id)viewTx(txs.find(x=>x.id===id))};
+}
+function viewTx(t){
+  const rows=[["Reference",t.ref],["Timestamp",stamp(t.ts)],["Customer",t.name||"—"],["Address",t.addr||"—"],["Phone",t.phone],["Type",t.kind==="correction"?"Correction ("+t.type+")":t.type],["Amount",peso(t.amount)],["Service charge",peso(t.fee)],["Status",t.status],["Tender",t.tender||"—"]];
+  if(t.statusHistory&&t.statusHistory.length>1)rows.push(["Status history",t.statusHistory.map(s=>s.status+" ("+stamp(s.ts)+")").join(" → ")]);
+  if(t.note)rows.push(["Correction note",t.note]);
+  const body=`<h2 style="font-size:1.5rem">SariSafe Transaction</h2>${rows.map(([k,v])=>`<p class="dl"><b>${k}:</b> ${esc(v)}</p>`).join("")}${t.sig?`<h3>Customer Signature</h3><img src="${t.sig}" alt="Signature" class="bigsig">`:""}`;
+  $("#printArea").innerHTML=body;
+  const d=modal(`<div class="detail">${body}<div class="btns"><button class="btn" id="vPrint">Print details</button><button class="btn sec" id="vClose">Close</button></div></div>`,"view");
+  d.querySelector("#vPrint").onclick=()=>window.print();d.querySelector("#vClose").onclick=closeModal;
+}
+
+/* ---------- owner: fee tiers & PIN (FR-07, FR-09) ---------- */
+function renderSettings(){
+  const el=$("#v-settings"),row=(t={min:"",max:"",fee:""})=>`<div class="row tier" style="margin-bottom:6px"><input type="number" placeholder="From ₱" value="${t.min}"><input type="number" placeholder="To ₱" value="${t.max}"><input type="number" placeholder="Fee ₱" value="${t.fee}"></div>`;
+  el.innerHTML=`<div class="card"><h2>Service fee tiers (patong)</h2>
+   <p class="note" style="margin-bottom:8px">Default rates cover <b>₱1 up to ₱50,000</b> (₱10 per ₱500 bracket, up to ₱1,000 fee).</p>
+   <div class="row" style="margin-bottom:4px;font-weight:700;font-size:.82rem;color:#52607a"><div>From (₱)</div><div>To (₱)</div><div>Fee (₱)</div></div>
+   <div id="tiers" style="max-height:420px;overflow-y:auto;padding-right:4px">${S.tiers.map(row).join("")}</div>
+   <div class="btns"><button class="btn sec" id="addT">Add tier</button><button class="btn" id="saveT">Save tiers</button><button class="btn sec" id="resetT">Reset to ₱50,000 default</button></div></div>
+   <div class="card"><h2>Change owner PIN</h2><div class="row"><div><label for="p0">Current PIN</label><input id="p0" type="password" inputmode="numeric" maxlength="4"></div>
+   <div><label for="p1">New 4-digit PIN</label><input id="p1" type="password" inputmode="numeric" maxlength="4"></div></div><div class="btns"><button class="btn" id="savePin">Change PIN</button></div></div>`;
+  $("#addT").onclick=()=>{const box=$("#tiers");box.insertAdjacentHTML("beforeend",row());box.scrollTop=box.scrollHeight};
+  $("#saveT").onclick=async()=>{
+    const ts=[...document.querySelectorAll(".tier")].map(r=>{const i=r.querySelectorAll("input");return{min:parseFloat(i[0].value),max:parseFloat(i[1].value),fee:parseFloat(i[2].value)}}).filter(t=>!isNaN(t.min)||!isNaN(t.max)||!isNaN(t.fee));
+    if(ts.some(t=>isNaN(t.min)||isNaN(t.max)||isNaN(t.fee)||t.min>t.max||t.fee<0)){toast("Each tier needs valid From, To and Fee values.");return}
+    ts.sort((a,b)=>a.min-b.min);if(ts.some((t,i)=>i&&t.min<=ts[i-1].max)){toast("Tiers must not overlap.");return}
+    S.tiers=ts;await setSet("tiers",ts);renderSettings();toast("Fee tiers saved.")};
+  $("#resetT").onclick=async()=>{
+    S.tiers=DEFAULT_TIERS.map(t=>({...t}));await setSet("tiers",S.tiers);renderSettings();toast("Fee tiers reset to ₱1 – ₱50,000 default.")};
+  $("#savePin").onclick=async()=>{const a=$("#p0").value,b=$("#p1").value;
+    if(await hashPin(a)!==await getSet("pin")){toast("Current PIN is incorrect.");return}
+    if(!/^\d{4}$/.test(b)){toast("New PIN must be exactly 4 digits.");return}
+    await setSet("pin",await hashPin(b));await setSet("pinDefault",false);banners();renderSettings();toast("PIN changed.")};
+}
+
+/* ---------- owner: backup, export, import, storage health (FR-06, FR-12, NFR-05) ---------- */
+async function storageInfo(){try{const e=await navigator.storage.estimate();return{used:e.usage,quota:e.quota,pct:e.quota?e.usage/e.quota*100:0}}catch{return null}}
+function download(name,type,text){const a=document.createElement("a");a.href=URL.createObjectURL(new Blob([text],{type}));a.download=name;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),1000)}
+async function renderBackup(){
+  const el=$("#v-backup"),e=await storageInfo(),lb=await getSet("lastBackup"),allTxs=await all("transactions");
+  const todayStr=day(new Date().toISOString());
+  const selDate=el.dataset.csvDate??todayStr;
+  el.innerHTML=`<div class="card"><h2>Storage health</h2>${e?`<div class="bar ${e.pct>=80?"hi":""}"><i style="width:${Math.min(100,e.pct)}%"></i></div>
+   <p class="note">${(e.used/1048576).toFixed(1)} MB used of ${(e.quota/1048576).toFixed(0)} MB (${e.pct.toFixed(1)}%). A backup warning appears at 80%.</p>`:`<p class="note">Storage usage is not available in this browser.</p>`}
+   <p class="note">Last backup: ${lb?fmt(lb):"never"}. Browser data lives on this device only – export regularly, especially before clearing site data.</p></div>
+   <div class="card"><h2>Export</h2>
+   <div class="row" style="align-items:end;max-width:440px;margin-bottom:8px">
+     <div><label for="csvDate">Filter CSV by date (leave blank for all dates)</label><input id="csvDate" type="date" value="${esc(selDate)}"></div>
+     <div class="btns" style="margin:0"><button class="btn sec sm" id="csvToday">Today</button><button class="btn sec sm" id="csvAllDates">All dates</button></div>
+   </div>
+   <p class="note" id="csvCountNote" style="margin:4px 0 10px"></p>
+   <div class="btns"><button class="btn" id="xCsv">Export transaction log (CSV)</button><button class="btn sec" id="xJson">Full backup (JSON)</button></div>
+   <p class="note">CSV is comma-separated and organized for Excel/Google Sheets (no signature images). The JSON backup includes all transactions, signatures, shift history, and fee tiers.</p></div>
+   <div class="card"><h2>Restore from backup</h2><label for="imp">Choose a SariSafe JSON backup file</label><input id="imp" type="file" accept=".json,application/json">
+   <p class="note">Records are merged into this device's database; existing records are not deleted. The PIN is not restored.</p></div>`;
+  renderCloudCard();
+  const updateCsvPreview=()=>{
+    const d=$("#csvDate").value;el.dataset.csvDate=d;
+    const matched=d?allTxs.filter(t=>day(t.ts)===d):allTxs;
+    $("#csvCountNote").textContent=d
+      ?`Selected date (${d}): ${matched.length} transaction${matched.length===1?"":"s"} ready to export.`
+      :`All dates selected: ${matched.length} total transaction${matched.length===1?"":"s"} ready to export.`;
+  };
+  updateCsvPreview();
+  $("#csvDate").onchange=updateCsvPreview;
+  $("#csvToday").onclick=()=>{$("#csvDate").value=todayStr;updateCsvPreview()};
+  $("#csvAllDates").onclick=()=>{$("#csvDate").value="";updateCsvPreview()};
+  $("#xCsv").onclick=async()=>{
+    const d=$("#csvDate").value;
+    const txs=(await all("transactions")).filter(t=>!d||day(t.ts)===d).sort((a,b)=>a.ts<b.ts?-1:1);
+    if(!txs.length){toast(d?`No transactions found on ${d}.`:"No transactions to export.");return}
+    const q=v=>`"${String(v??"").replace(/"/g,'""')}"`;
+    const txt=v=>v?`"=""${String(v).replace(/"/g,'""')}"""`:'""';
+    const H=["Date","Time","Reference Number","Type","Amount (PHP)","Service Fee (PHP)","Total (PHP)","Status","Customer Name","Phone Number","Address","Tender","Entry Kind","Notes","Transaction ID","Shift ID"];
+    const rows=txs.map(t=>{
+      const dt=new Date(t.ts),p=n=>String(n).padStart(2,"0");
+      const dStr=`${dt.getFullYear()}-${p(dt.getMonth()+1)}-${p(dt.getDate())}`;
+      const tStr=`${p(dt.getHours())}:${p(dt.getMinutes())}:${p(dt.getSeconds())}`;
+      const amt=Number(t.amount||0),fee=Number(t.fee||0);
+      return [q(dStr),q(tStr),txt(t.ref),q(t.kind==="correction"?"Correction ("+t.type+")":t.type),q(amt.toFixed(2)),q(fee.toFixed(2)),q((amt+fee).toFixed(2)),q(t.status),q(t.name||""),txt(t.phone||""),q(t.addr||""),q(t.tender||""),q(t.kind||"sale"),q(t.note||""),q(t.id),q(t.shiftId||"")].join(",");
     });
+    const okTxs=txs.filter(counted);
+    const sum=(ty,f)=>okTxs.filter(t=>!ty||t.type===ty).reduce((a,t)=>a+Number(t[f]||0),0);
+    const summaryRows=[
+      "",
+      [q("SUMMARY (Confirmed OK Only)"),q(""),q(""),q("Cash-In Total"),q(sum("Cash-In","amount").toFixed(2)),q(""),q(""),q(""),q(""),q(""),q(""),q(""),q(""),q(""),q(""),q("")].join(","),
+      [q(""),q(""),q(""),q("Cash-Out Total"),q(sum("Cash-Out","amount").toFixed(2)),q(""),q(""),q(""),q(""),q(""),q(""),q(""),q(""),q(""),q(""),q("")].join(","),
+      [q(""),q(""),q(""),q("Service Fees Earned"),q(""),q(sum("","fee").toFixed(2)),q(""),q(""),q(""),q(""),q(""),q(""),q(""),q(""),q(""),q("")].join(",")
+    ];
+    const fname=d?`sarisafe-transactions-${d}.csv`:`sarisafe-transactions-all-${todayStr}.csv`;
+    download(fname,"text/csv;charset=utf-8","\uFEFF"+H.map(q).join(",")+"\n"+rows.join("\n")+"\n"+summaryRows.join("\n"));
+    await setSet("lastBackup",new Date().toISOString());toast(`Exported ${txs.length} transaction(s).`);renderBackup()};
+  $("#xJson").onclick=async()=>{
+    const b={app:"SariSafe",version:1,exportedAt:new Date().toISOString(),transactions:await all("transactions"),shifts:await all("shifts"),tiers:S.tiers};
+    download(`sarisafe-backup-${day(b.exportedAt)}.json`,"application/json",JSON.stringify(b));await setSet("lastBackup",b.exportedAt);renderBackup()};
+  $("#imp").onchange=async ev=>{
+    const f=ev.target.files[0];if(!f)return;
+    try{const b=JSON.parse(await f.text());
+      if(b.app!=="SariSafe"||!Array.isArray(b.transactions)||!Array.isArray(b.shifts))throw 0;
+      if(!confirm(`Restore ${b.transactions.length} transactions and ${b.shifts.length} shifts into this device?`))return;
+      for(const t of b.transactions)await put("transactions",t);for(const s of b.shifts)await put("shifts",s);
+      if(Array.isArray(b.tiers)&&b.tiers.length){S.tiers=b.tiers;await setSet("tiers",b.tiers)}
+      await refreshShift();toast("Backup restored.");renderBackup()}
+    catch{toast("That file is not a valid SariSafe backup.")}
+  };
+}
 
-    async function submitOwnerPin(e) {
-      e.preventDefault();
-      const entered = document.getElementById("pinInput").value.trim();
-      const savedPin = await dbGetSetting("ownerPin", "1234");
-      if (entered === String(savedPin)) {
-        ownerUnlocked = true;
-        closeModal("pinModal");
-        applyOwnerState();
-      } else {
-        alert("Incorrect PIN.");
+/* ---------- wallet card, quick amounts, auto-popup receipt ---------- */
+function walletCard(txs){
+  let w="–",c="–",s="No shift open";
+  if(S.shift){const b=balances(S.shift,txs);w=peso(b.w);c=peso(b.c);s=S.shift.tender}
+  $("#wBal").textContent=S.hide&&S.shift?"₱ ••••••":w;$("#wCash").textContent=S.hide&&S.shift?"••••":c;$("#wShift").textContent=s;
+}
+$("#eye").onclick=()=>{S.hide=!S.hide;renderRecent()};
+$("#chips").onclick=e=>{const a=e.target.dataset.a;if(a){$("#amount").value=a;$("#amount").oninput()}};
+function successPop(){const o=$("#okPop");o.classList.remove("show");void o.offsetWidth;o.classList.add("show");setTimeout(()=>o.classList.remove("show"),1400)}
+function showReceipt(t){
+  const total=Number(t.amount||0)+Number(t.fee||0);
+  const rows=[
+    ["Reference No.",`<b>${esc(t.ref)}</b>`],
+    ["Date & Time",esc(stamp(t.ts))],
+    ["Type",`<span class="pill ${t.type==="Cash-In"?"in":"out"}">${esc(t.type)}</span>`],
+    ["Amount",esc(peso(t.amount))],
+    ["Service Fee",esc(peso(t.fee))],
+    ["Total",`<b>${esc(peso(total))}</b>`],
+    ["Status",`<span class="st ${t.status}">${esc(t.status)}</span>`],
+    ["Customer",esc(t.name||"—")],
+    ["Phone",esc(t.phone||"—")]
+  ];
+  if(t.addr)rows.push(["Address",esc(t.addr)]);
+  if(t.tender)rows.push(["Tender",esc(t.tender)]);
+  const body=`<div class="rcpt-head"><span class="rcpt-ok">✓ Transaction Saved</span><h2 style="margin:6px 0 2px;font-size:1.35rem">SariSafe Receipt</h2><p class="note" style="margin:0">Fuentez Store · GCash Service</p></div>`
+    +`<div class="rcpt-body">${rows.map(([k,v])=>`<div class="rcpt-row"><span>${k}</span><span>${v}</span></div>`).join("")}</div>`
+    +(t.sig?`<div class="rcpt-sig"><span class="note">Customer Signature</span><img src="${t.sig}" alt="Customer Signature" class="bigsig"></div>`:"");
+  $("#printArea").innerHTML=body;
+  const d=modal(`<div class="detail">${body}<div class="btns"><button class="btn" id="rDone">Done</button><button class="btn sec" id="rPrint">Print</button></div></div>`,"view");
+  d.querySelector("#rDone").onclick=closeModal;
+  d.querySelector("#rPrint").onclick=()=>window.print();
+}
+
+/* ---------- cloud sync (optional, Supabase REST; app still works fully offline) ---------- */
+const TBL={transactions:"sarisafe_transactions",shifts:"sarisafe_shifts"};
+const DEFAULT_CLOUD={
+  url:"https://lcfdxountexmtmnhuynw.supabase.co",
+  key:"sb_publishable_QJtZjV-w2YgPZPN7LryR7g_KvhB6ZRb",
+  email:"YOUR_STAFF_EMAIL",
+  password:"YOUR_STAFF_PASSWORD"
+};
+const cloudCfg=async()=>(await getSet("cloud"))||(DEFAULT_CLOUD.email&&DEFAULT_CLOUD.password&&DEFAULT_CLOUD.email!=="YOUR_STAFF_EMAIL"?{...DEFAULT_CLOUD}:null);
+function setCloud(s){const c=$("#cloudChip"),m={ok:"☁ Synced",syncing:"☁ Syncing…",offline:"☁ Offline – will sync later",error:"☁ Sync error"};if(s==="off"){c.hidden=true;return}c.hidden=false;c.textContent=m[s];c.title=S.err||""}
+async function apiErr(r){let t="";try{const j=await r.clone().json();t=j.message||j.msg||j.error_description||j.error||""}catch{}return r.status+" "+t}
+async function sbToken(cfg,body,grant){
+  const r=await fetch(`${cfg.url}/auth/v1/token?grant_type=${grant}`,{method:"POST",headers:{apikey:cfg.key,"Content-Type":"application/json"},body:JSON.stringify(body)});
+  if(!r.ok)throw new Error("Login failed: "+await apiErr(r));
+  const j=await r.json();cfg.access=j.access_token;cfg.refresh=j.refresh_token;cfg.exp=Date.now()+(j.expires_in-60)*1000;delete cfg.password;await setSet("cloud",cfg);return cfg}
+const sb=(cfg,path,o={})=>fetch(cfg.url+"/rest/v1/"+path,{...o,headers:{apikey:cfg.key,Authorization:"Bearer "+cfg.access,"Content-Type":"application/json",...(o.headers||{})}});
+const getRec=(n,id)=>rq(store(n).get(id));
+let syncing=false,again=false,kickT;
+function kick(){if(syncing){again=true;return}clearTimeout(kickT);kickT=setTimeout(syncNow,1500)}
+async function syncNow(){
+  if(syncing)return;const cfg=await cloudCfg();if(!cfg||(!cfg.refresh&&!(cfg.email&&cfg.password))){setCloud("off");return}
+  if(!navigator.onLine){setCloud("offline");return}
+  syncing=true;setCloud("syncing");let changed=false;
+  try{
+    if(!cfg.refresh)await sbToken(cfg,{email:cfg.email,password:cfg.password},"password");
+    else if(!cfg.access||Date.now()>cfg.exp)await sbToken(cfg,{refresh_token:cfg.refresh},"refresh_token");
+    for(const [n,tbl] of Object.entries(TBL)){
+      const dirty=(await all(n)).filter(x=>x.dirty!==false);
+      for(let i=0;i<dirty.length;i+=20){
+        const ch=dirty.slice(i,i+20);
+        const rows=ch.map(x=>{const{dirty:_d,srv:_s,...d}=x;return{id:x.id,ts:x.ts||x.startedAt,data:d}});
+        const r=await sb(cfg,tbl,{method:"POST",headers:{Prefer:"resolution=merge-duplicates,return=minimal"},body:JSON.stringify(rows)});
+        if(!r.ok)throw new Error("Upload failed: "+await apiErr(r));
+        for(const x of ch){x.dirty=false;await putRaw(n,x)}
       }
-    }
-
-    async function saveNewPin() {
-      const pin = document.getElementById("newOwnerPin").value.trim();
-      if (!/^\d{4,6}$/.test(pin)) {
-        alert("Please enter a 4 to 6 digit numeric PIN.");
-        return;
-      }
-      await dbSetSetting("ownerPin", pin);
-      document.getElementById("newOwnerPin").value = "";
-      alert("Owner PIN updated.");
-    }
-
-    function applyOwnerState() {
-      document.getElementById("btnOwnerToggle").textContent = ownerUnlocked ? "Lock owner view" : "Owner login";
-      document.getElementById("ownerBanner").classList.toggle("hidden", !ownerUnlocked);
-      document.querySelectorAll(".owner-only").forEach((el) => {
-        el.classList.toggle("hidden", !ownerUnlocked);
-      });
-    }
-
-    function switchTab(tabName) {
-      document.querySelectorAll(".tab-view").forEach((s) => s.classList.add("hidden"));
-      document.querySelectorAll(".nav-item").forEach((b) => {
-        b.classList.toggle("active", b.dataset.tab === tabName);
-      });
-      const target = document.getElementById(`tab-${tabName}`);
-      if (target) target.classList.remove("hidden");
-
-      if (tabName === "counter") setTimeout(resizeSignatureCanvas, 30);
-      if (tabName === "summary") { populateSummaryTenderFilter(); renderSummary(); }
-      if (tabName === "log") renderLog();
-      if (tabName === "fees") renderTiersEditor();
-      if (tabName === "backup") updateStorageHealth();
-    }
-
-    function closeModal(id) {
-      document.getElementById(id).classList.remove("open");
-    }
-
-    function updateStorageHealth() {
-      document.getElementById("storageHealthText").textContent =
-        `Local IndexedDB healthy — ${transactions.length} transaction(s) and ${shifts.length} shift(s) saved offline on this device.`;
-    }
-
-    /* =========================================================================
-       12. SUPABASE CLOUD SYNC (REST API — NO EXTERNAL CDN REQUIRED)
-       ========================================================================= */
-    function setSyncBadge(state, text) {
-      const badge = document.getElementById("syncBadge");
-      badge.className = "sync-badge" + (state === "ok" ? " ok" : state === "err" ? " err" : "");
-      badge.textContent = text;
-    }
-
-    async function getCloudConfig() {
-      const saved = await dbGetSetting("cloudConfig", null);
-      if (saved && saved.url && saved.anonKey && saved.accessToken) return saved;
-      if (DEFAULT_CLOUD.url && DEFAULT_CLOUD.anonKey && DEFAULT_CLOUD.email && DEFAULT_CLOUD.password) {
-        return await signInSupabase(DEFAULT_CLOUD.url, DEFAULT_CLOUD.anonKey, DEFAULT_CLOUD.email, DEFAULT_CLOUD.password);
-      }
-      return null;
-    }
-
-    async function signInSupabase(url, anonKey, email, password) {
-      const cleanUrl = url.replace(/\/+$/, "");
-      const res = await fetch(`${cleanUrl}/auth/v1/token?grant_type=password`, {
-        method: "POST",
-        headers: {
-          "apikey": anonKey,
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify({ email, password })
-      });
-      const data = await res.json();
-      if (!res.ok || !data.access_token) {
-        throw new Error(data.error_description || data.msg || "Supabase login failed");
-      }
-      const cfg = {
-        url: cleanUrl,
-        anonKey,
-        email,
-        accessToken: data.access_token,
-        refreshToken: data.refresh_token || "",
-        userId: data.user ? data.user.id : ""
-      };
-      await dbSetSetting("cloudConfig", cfg);
-      return cfg;
-    }
-
-    async function refreshSupabaseToken(cfg) {
-      if (!cfg.refreshToken) return cfg;
-      const res = await fetch(`${cfg.url}/auth/v1/token?grant_type=refresh_token`, {
-        method: "POST",
-        headers: {
-          "apikey": cfg.anonKey,
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify({ refresh_token: cfg.refreshToken })
-      });
-      if (!res.ok) return cfg;
-      const data = await res.json();
-      if (data.access_token) {
-        cfg.accessToken = data.access_token;
-        cfg.refreshToken = data.refresh_token || cfg.refreshToken;
-        await dbSetSetting("cloudConfig", cfg);
-      }
-      return cfg;
-    }
-
-    async function handleConnectCloud(e) {
-      e.preventDefault();
-      const url = document.getElementById("sbUrl").value.trim();
-      const anonKey = document.getElementById("sbAnon").value.trim();
-      const email = document.getElementById("sbEmail").value.trim();
-      const password = document.getElementById("sbPass").value;
-
-      try {
-        setSyncBadge("", "☁ Connecting...");
-        await signInSupabase(url, anonKey, email, password);
-        document.getElementById("sbPass").value = "";
-        await renderCloudUi();
-        await syncNow(true);
-      } catch (err) {
-        setSyncBadge("err", "☁ Sync error");
-        alert("Cloud connection failed: " + err.message);
-      }
-    }
-
-    async function disconnectCloud() {
-      if (!confirm("Disconnect cloud sync on this device? Local records will remain.")) return;
-      await dbSetSetting("cloudConfig", null);
-      setSyncBadge("", "☁ Not connected");
-      renderCloudUi();
-    }
-
-    async function renderCloudUi() {
-      const cfg = await dbGetSetting("cloudConfig", null);
-      const connBox = document.getElementById("cloudConnectedBox");
-      const form = document.getElementById("cloudConnectForm");
-
-      if (cfg && cfg.accessToken) {
-        connBox.classList.remove("hidden");
-        form.classList.add("hidden");
-        document.getElementById("cloudConnectedEmail").textContent = cfg.email || "Connected";
-        document.getElementById("cloudErrorMsg").textContent = "";
-      } else {
-        connBox.classList.add("hidden");
-        form.classList.remove("hidden");
-      }
-    }
-
-    async function sbFetch(cfg, path, options = {}) {
-      const headers = {
-        "apikey": cfg.anonKey,
-        "Authorization": `Bearer ${cfg.accessToken}`,
-        "Content-Type": "application/json",
-        ...(options.headers || {})
-      };
-      let res = await fetch(`${cfg.url}${path}`, { ...options, headers });
-      if (res.status === 401 && cfg.refreshToken) {
-        cfg = await refreshSupabaseToken(cfg);
-        headers.Authorization = `Bearer ${cfg.accessToken}`;
-        res = await fetch(`${cfg.url}${path}`, { ...options, headers });
-      }
-      return res;
-    }
-
-    async function syncNow(manual = false) {
-      let cfg = await getCloudConfig();
-      if (!cfg) {
-        setSyncBadge("", "☁ Not connected");
-        return;
-      }
-
-      if (!navigator.onLine) {
-        setSyncBadge("", "☁ Offline (saved locally)");
-        return;
-      }
-
-      try {
-        setSyncBadge("", "☁ Syncing...");
-
-        // 1. Push local transactions
-        if (transactions.length > 0) {
-          const txRows = transactions.map((t) => ({
-            id: t.id,
-            timestamp: t.timestamp,
-            reference: t.reference,
-            phone: t.phone || "",
-            type: t.type,
-            amount: Number(t.amount) || 0,
-            fee: Number(t.fee) || 0,
-            customer: t.customer || "",
-            address: t.address || "",
-            tender: t.tender || "",
-            shift_id: t.shiftId || t.shift_id || "",
-            signature: t.signature || "",
-            status: t.status || "OK"
-          }));
-
-          const upTx = await sbFetch(cfg, "/rest/v1/transactions?on_conflict=id", {
-            method: "POST",
-            headers: { "Prefer": "resolution=merge-duplicates,return=minimal" },
-            body: JSON.stringify(txRows)
-          });
-
-          if (!upTx.ok) {
-            const errTxt = await upTx.text();
-            throw new Error(`Transactions upload failed (${upTx.status}): ${errTxt}`);
-          }
+      let lp=await getSet("pull_"+n),first=true;
+      for(;;){
+        const since=first&&lp?new Date(Date.parse(lp)-60000).toISOString():(lp||"1970-01-01T00:00:00Z");first=false;
+        const r=await sb(cfg,`${tbl}?select=id,data,updated_at&updated_at=gt.${encodeURIComponent(since)}&order=updated_at.asc&limit=200`);
+        if(!r.ok)throw new Error("Download failed: "+await apiErr(r));
+        const rows=await r.json();
+        for(const row of rows){
+          lp=row.updated_at;const cur=await getRec(n,row.id);
+          if(cur&&cur.dirty!==false)continue;
+          if(!cur||cur.srv!==row.updated_at){await putRaw(n,{...row.data,dirty:false,srv:row.updated_at});changed=true}
         }
-
-        // 2. Push local shifts
-        if (shifts.length > 0) {
-          const shRows = shifts.map((s) => ({
-            id: s.id,
-            tender: s.tender,
-            started_at: s.startedAt || s.started_at || "",
-            ended_at: s.endedAt || s.ended_at || "",
-            open_cash: Number(s.openCash ?? s.open_cash ?? 0),
-            open_gcash: Number(s.openGcash ?? s.open_gcash ?? 0)
-          }));
-
-          await sbFetch(cfg, "/rest/v1/shifts?on_conflict=id", {
-            method: "POST",
-            headers: { "Prefer": "resolution=merge-duplicates,return=minimal" },
-            body: JSON.stringify(shRows)
-          });
-        }
-
-        // 3. Pull remote transactions & merge into IndexedDB
-        const pullTx = await sbFetch(cfg, "/rest/v1/transactions?select=*&order=timestamp.desc");
-        if (pullTx.ok) {
-          const remoteTxs = await pullTx.json();
-          const map = new Map(transactions.map((t) => [t.id, t]));
-          for (const r of remoteTxs) {
-            const normalized = {
-              id: r.id,
-              timestamp: r.timestamp,
-              reference: r.reference,
-              phone: r.phone || "",
-              type: r.type,
-              amount: Number(r.amount) || 0,
-              fee: Number(r.fee) || 0,
-              customer: r.customer || "",
-              address: r.address || "",
-              tender: r.tender || "",
-              shiftId: r.shift_id || r.shiftId || "",
-              signature: r.signature || "",
-              status: r.status || "OK"
-            };
-            map.set(normalized.id, normalized);
-            await dbPut("transactions", normalized);
-          }
-          transactions = [...map.values()].sort((a, b) => String(b.timestamp).localeCompare(String(a.timestamp)));
-        }
-
-        // 4. Pull remote shifts & merge into IndexedDB
-        const pullSh = await sbFetch(cfg, "/rest/v1/shifts?select=*&order=started_at.desc");
-        if (pullSh.ok) {
-          const remoteShifts = await pullSh.json();
-          const shMap = new Map(shifts.map((s) => [s.id, s]));
-          for (const r of remoteShifts) {
-            const normalized = {
-              id: r.id,
-              tender: r.tender,
-              startedAt: r.started_at || r.startedAt || "",
-              endedAt: r.ended_at || r.endedAt || "",
-              openCash: Number(r.open_cash ?? r.openCash ?? 0),
-              openGcash: Number(r.open_gcash ?? r.openGcash ?? 0)
-            };
-            shMap.set(normalized.id, normalized);
-            await dbPut("shifts", normalized);
-          }
-          shifts = [...shMap.values()].sort((a, b) => String(b.startedAt).localeCompare(String(a.startedAt)));
-        }
-
-        setSyncBadge("ok", "☁ Synced");
-        const errEl = document.getElementById("cloudErrorMsg");
-        if (errEl) errEl.textContent = "";
-        refreshAllViews();
-      } catch (err) {
-        setSyncBadge("err", "☁ Sync error");
-        const errEl = document.getElementById("cloudErrorMsg");
-        if (errEl) errEl.textContent = err.message;
-        if (manual) alert("Sync error: " + err.message);
+        if(rows.length<200)break;
       }
+      if(lp)await setSet("pull_"+n,lp);
     }
+    S.lastSync=new Date().toISOString();S.err="";setCloud("ok");
+    if(changed){await refreshShift();if(["counter","summary","log"].includes(S.tab))show(S.tab)}
+  }catch(e){S.err=e instanceof TypeError?"Cannot reach Supabase (network or wrong URL).":(e.message||String(e));setCloud(e instanceof TypeError||!navigator.onLine?"offline":"error")}
+  finally{syncing=false;if(again){again=false;kick()}}
+}
+async function renderCloudCard(){
+  const c=await cloudCfg()||{},on=!!c.refresh,el=document.createElement("div");el.className="card";
+  el.innerHTML=`<h2>Cloud sync – see transactions from other devices</h2>`+(on?
+   `<p class="note">Connected as ${esc(c.email)}.${S.lastSync?" Last sync "+fmt(S.lastSync):""}</p>${S.err?`<p class="note" style="color:var(--red)"><b>Last error:</b> ${esc(c.err)}</p>`:""}<div class="btns"><button class="btn" id="cSync">Sync now</button><button class="btn red" id="cOff">Disconnect this device</button></div>`
+  :`<p class="note">Records upload to your Supabase project when there is internet. The counter still works offline. Use the values from the README setup.</p>
+   <label for="cu">Supabase project URL</label><input id="cu" placeholder="https://xxxx.supabase.co" value="${esc(c.url||"")}">
+   <label for="ck">Supabase anon (public) key</label><input id="ck" value="${esc(c.key||"")}">
+   <div class="row"><div><label for="ce">Store account email</label><input id="ce" type="email" value="${esc(c.email||"")}"></div><div><label for="cp">Store account password</label><input id="cp" type="password"></div></div>
+   <div class="btns"><button class="btn" id="cOn">Connect</button></div><p id="cErr" class="note" style="color:var(--red)"></p>`);
+  $("#v-backup").appendChild(el);
+  if(on){
+    $("#cSync").onclick=async()=>{await syncNow();toast("Sync finished.");renderBackup()};
+    $("#cOff").onclick=async()=>{if(!confirm("Disconnect this device from the cloud? Records on this device stay."))return;
+      await setSet("cloud",null);await setSet("pull_transactions",null);await setSet("pull_shifts",null);setCloud("off");renderBackup()};
+  }else $("#cOn").onclick=async()=>{
+    const cfg={url:$("#cu").value.trim().replace(/\/+$/,""),key:$("#ck").value.trim(),email:$("#ce").value.trim()},pw=$("#cp").value;
+    if(!/^https:\/\/.+/.test(cfg.url)||!cfg.key||!cfg.email||!pw){toast("Fill in all the cloud fields.");return}
+    try{await sbToken(cfg,{email:cfg.email,password:pw},"password");toast("Connected. Syncing…");await syncNow();renderBackup()}
+    catch(e){$("#cErr").textContent=(e instanceof TypeError?"Cannot reach Supabase. Check the Project URL and your internet. ":"")+(e.message||"");toast("Could not connect.")}
+  };
+}
 
-    function refreshAllViews() {
-      renderShiftTab();
-      populateSummaryTenderFilter();
-      renderSummary();
-      renderLog();
-      updateStorageHealth();
-    }
+/* ---------- install app prompt ---------- */
+let installPrompt;
+window.addEventListener("beforeinstallprompt",e=>{e.preventDefault();installPrompt=e;$("#installBtn").hidden=false});
+$("#installBtn").onclick=async()=>{if(!installPrompt)return;installPrompt.prompt();await installPrompt.userChoice;installPrompt=null;$("#installBtn").hidden=true};
 
-    /* =========================================================================
-       13. PWA INSTALL & SERVICE WORKER AUTO-UPDATE
-       ========================================================================= */
-    window.addEventListener("beforeinstallprompt", (e) => {
-      e.preventDefault();
-      deferredInstallPrompt = e;
-      document.getElementById("btnInstallApp").classList.remove("hidden");
-    });
-
-    document.getElementById("btnInstallApp").addEventListener("click", async () => {
-      if (!deferredInstallPrompt) return;
-      deferredInstallPrompt.prompt();
-      await deferredInstallPrompt.userChoice;
-      deferredInstallPrompt = null;
-      document.getElementById("btnInstallApp").classList.add("hidden");
-    });
-
-    if ("serviceWorker" in navigator) {
-      window.addEventListener("load", () => {
-        navigator.serviceWorker.register("/sw.js").catch(() => {});
-      });
-      let refreshing = false;
-      navigator.serviceWorker.addEventListener("controllerchange", () => {
-        if (!refreshing) {
-          refreshing = true;
-          window.location.reload();
-        }
-      });
-    }
-
-    /* =========================================================================
-       14. BOOTSTRAP
-       ========================================================================= */
-    (async function init() {
-      await openDB();
-      await loadTiers();
-      transactions = (await dbGetAll("transactions")).sort((a, b) => String(b.timestamp).localeCompare(String(a.timestamp)));
-      shifts = (await dbGetAll("shifts")).sort((a, b) => String(b.startedAt).localeCompare(String(a.startedAt)));
-
-      resizeSignatureCanvas();
-      window.addEventListener("resize", resizeSignatureCanvas);
-
-      refreshAllViews();
-      await renderCloudUi();
-      await syncNow(false);
-    })();
-  </script>
+/* ---------- start ---------- */
+if("serviceWorker" in navigator&&location.protocol.startsWith("http"))navigator.serviceWorker.register("sw.js").catch(()=>{});
+(async()=>{
+  try{D=await openDB()}catch(e){
+    document.querySelector("main").innerHTML=`<div class="card"><h2>Storage is unavailable</h2><p>This browser has blocked IndexedDB (for example, in private browsing). Enable site storage or use a normal browser window, then reload.</p></div>`;return}
+  if(!(await getSet("pin"))){await setSet("pin",await hashPin("1234"));await setSet("pinDefault",true)}
+  S.deviceId=await getSet("deviceId");if(!S.deviceId){S.deviceId=uid();await setSet("deviceId",S.deviceId)}
+  await loadTiers();await refreshShift();syncStatusByType();show("counter");
+  syncNow();setInterval(syncNow,45000);
+  addEventListener("online",syncNow);addEventListener("offline",async()=>{if(await cloudCfg())setCloud("offline")});
+})();
+</script>
 </body>
 </html>
