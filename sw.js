@@ -1,23 +1,22 @@
-// SariSafe service worker: caches the app shell so it opens with no internet.
-// Bump CACHE when you change any file so devices pick up the update.
-const CACHE = "sarisafe-v15";
-const SHELL = ["./", "./index.html", "./styles.css", "./manifest.json", "./icon.svg"];
-self.addEventListener("install", e => {
-  e.waitUntil(caches.open(CACHE).then(c => c.addAll(SHELL)));
-  self.skipWaiting();
+const CACHE = "sarisafe-v16";
+const ASSETS = ["./", "./index.html", "./manifest.json"];
+
+self.addEventListener("install", (e) => {
+  e.waitUntil(
+    caches.open(CACHE).then((cache) => cache.addAll(ASSETS)).then(() => self.skipWaiting())
+  );
 });
-self.addEventListener("activate", e => {
-  e.waitUntil(caches.keys().then(keys => Promise.all(keys.filter(k => k !== CACHE).map(k => caches.delete(k)))));
-  self.clients.claim();
+
+self.addEventListener("activate", (e) => {
+  e.waitUntil(
+    caches.keys().then((keys) =>
+      Promise.all(keys.filter((k) => k !== CACHE).map((k) => caches.delete(k)))
+    ).then(() => self.clients.claim())
+  );
 });
-self.addEventListener("fetch", e => {
-  // Only cache this app's own files. Never cache cloud (Supabase) requests: they contain customer data.
-  if (e.request.method !== "GET" || new URL(e.request.url).origin !== location.origin) return;
+
+self.addEventListener("fetch", (e) => {
   e.respondWith(
-    fetch(e.request).then(r => {
-      const copy = r.clone();
-      caches.open(CACHE).then(c => c.put(e.request, copy));
-      return r;
-    }).catch(() => caches.match(e.request).then(m => m || caches.match("./index.html")))
+    caches.match(e.request).then((cached) => cached || fetch(e.request))
   );
 });

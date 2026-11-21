@@ -50,7 +50,7 @@
     </div>
     <div class="row">
       <div><label for="phone">Customer phone (09XXXXXXXXX)</label><input id="phone" inputmode="numeric" maxlength="11" placeholder="09123456789"></div>
-      <div><label for="status">Status</label><select id="status"><option>OK</option><option>Pending</option><option>Duplicate</option></select></div>
+      <div><label for="status">Status</label><select id="status"><option value="OK">OK</option><option value="Pending">Pending</option><option value="Duplicate">Duplicate</option></select><div id="statusNote" class="note" style="margin-top:4px"></div></div>
     </div>
     <label>Customer signature</label>
     <canvas id="sig" width="600" height="200" tabindex="0" aria-label="Signature pad"></canvas>
@@ -61,7 +61,7 @@
   </div>
   <div class="card pend-card" id="pendingBox" hidden>
     <h2>⏳ Pending confirmations <span class="badge pend-badge" id="pendCount">0</span></h2>
-    <p class="note">Tap <b>Mark OK</b> once the GCash transfer arrives.</p>
+    <p class="note">Cash-Out transactions start as <b>Pending</b>. Verify the GCash receipt first, then tap <b>Mark OK</b> to confirm.</p>
     <div class="tw" id="pendingList"></div>
   </div>
   <div class="card"><h2 id="recentTitle">Today's entries</h2><div class="tw" id="recent"></div></div>
@@ -114,10 +114,10 @@ const S={role:"tender",tab:"counter",tiers:[],shift:null,manualFee:false,signed:
 const DEFAULT_TIERS=[{min:1,max:500,fee:10},{min:501,max:1000,fee:20},{min:1001,max:1500,fee:30},{min:1501,max:2000,fee:40},{min:2001,max:2500,fee:50},{min:2501,max:3000,fee:60}];
 const TABS={tender:[["counter","Counter"],["shift","Shift"]],owner:[["counter","Counter"],["shift","Shift"],["summary","Summary"],["log","Log"],["settings","Fees"],["backup","Backup"]]};
 
-/* ---------- fee tiers (FR-09) ---------- */
+/* ---------- fee tiers & balances (FR-09, FR-11) ---------- */
 const calcFee=a=>{const t=S.tiers.find(x=>a>=x.min&&a<=x.max);return t?t.fee:null};
 const eff=t=>t.type==="Cash-In"?{c:t.amount+t.fee,w:-t.amount}:{c:-t.amount,w:t.amount+t.fee};
-const counted=t=>t.status!=="Duplicate";
+const counted=t=>t.status==="OK";
 function balances(sh,txs){let c=sh.startCash,w=sh.startWallet;txs.filter(t=>t.shiftId===sh.id&&counted(t)).forEach(t=>{const e=eff(t);c+=e.c;w+=e.w});return{c,w}}
 async function refreshShift(){const s=(await all("shifts")).sort((a,b)=>a.startedAt<b.startedAt?1:-1);S.shift=s.find(x=>!x.endedAt&&x.device===S.deviceId)||null;banners()}
 async function loadTiers(){S.tiers=(await getSet("tiers"))||DEFAULT_TIERS}
@@ -185,7 +185,7 @@ function showDup(hits){
   <p><b>Do not process this transaction.</b></p>
   <div class="btns"><button class="btn red" id="dCancel">Cancel entry</button><button class="btn sec" id="dLog">Log as Duplicate attempt</button></div>`,"alert");
   d.querySelector("#dCancel").onclick=()=>{$("#ref").value="";S.alerted="";indicate("");closeModal();$("#ref").focus()};
-  d.querySelector("#dLog").onclick=()=>{$("#status").value="Duplicate";closeModal();$("#amount").focus()};
+  d.querySelector("#dLog").onclick=()=>{$("#status").disabled=false;$("#status").value="Duplicate";closeModal();$("#amount").focus()};
 }
 function indicate(ref,ms,hits){
   const el=$("#refInd");el.className="";
@@ -201,6 +201,22 @@ $("#ref").oninput=async e=>{
   if(hits.length&&S.alerted!==v){S.alerted=v;showDup(hits)}
 };
 
+/* ---------- transaction type status rule (Cash-In = OK, Cash-Out = Pending) ---------- */
+function syncStatusByType(){
+  const txType=document.querySelector("input[name=type]:checked")?.value||"Cash-In";
+  const st=$("#status"),sn=$("#statusNote");
+  if(txType==="Cash-Out"){
+    st.value="Pending";
+    st.disabled=true;
+    sn.textContent="Cash-Out starts as Pending until the tender checks and confirms it.";
+  }else{
+    st.disabled=false;
+    if(st.value!=="Duplicate")st.value="OK";
+    sn.textContent="Cash-In automatically defaults to OK.";
+  }
+}
+document.querySelectorAll("input[name=type]").forEach(r=>r.addEventListener("change",syncStatusByType));
+
 /* ---------- fee auto-calc with override (FR-09) ---------- */
 $("#amount").oninput=()=>{
   if(S.manualFee)return;const a=parseFloat($("#amount").value),f=a>0?calcFee(a):null;
@@ -210,15 +226,18 @@ $("#fee").oninput=()=>{S.manualFee=$("#fee").value!=="";$("#feeAuto").hidden=!S.
 $("#feeAuto").onclick=()=>{S.manualFee=false;$("#feeAuto").hidden=true;$("#fee").value="";$("#amount").oninput()};
 
 function resetForm(){
-  ["ref","amount","fee","phone","cname","addr"].forEach(i=>$("#"+i).value="");$("#status").value="OK";
+  ["ref","amount","fee","phone","cname","addr"].forEach(i=>$("#"+i).value="");
   document.querySelector('input[name=type][value="Cash-In"]').checked=true;
+  $("#status").disabled=false;$("#status").value="OK";syncStatusByType();
   S.manualFee=false;$("#feeAuto").hidden=true;S.alerted="";$("#feeNote").textContent="";clearSig();indicate("");
 }
 $("#resetTx").onclick=resetForm;
 
 /* ---------- record transaction (FR-03, FR-10) ---------- */
 $("#saveTx").onclick=async()=>{
-  const ref=$("#ref").value,amount=parseFloat($("#amount").value),fee=parseFloat($("#fee").value||"0"),phone=$("#phone").value,status=$("#status").value;
+  const txType=document.querySelector("input[name=type]:checked").value;
+  const ref=$("#ref").value,amount=parseFloat($("#amount").value),fee=parseFloat($("#fee").value||"0"),phone=$("#phone").value;
+  const status=txType==="Cash-Out"&&$("#status").value!=="Duplicate"?"Pending":$("#status").value;
   const err=!/^\d{13}$/.test(ref)?"Reference number must be exactly 13 digits."
     :!(amount>0)?"Enter a valid amount."
     :!$("#cname").value.trim()?"Enter the customer's name."
@@ -229,7 +248,7 @@ $("#saveTx").onclick=async()=>{
   if(err){toast(err);return}
   const hits=await findDup(ref);
   if(hits.length&&status!=="Duplicate"){showDup(hits);return}
-  const t={id:uid(),ts:new Date().toISOString(),ref,type:document.querySelector("input[name=type]:checked").value,amount,fee,phone,status,name:$("#cname").value.trim(),addr:$("#addr").value.trim(),
+  const t={id:uid(),ts:new Date().toISOString(),ref,type:txType,amount,fee,phone,status,name:$("#cname").value.trim(),addr:$("#addr").value.trim(),
     sig:cv.toDataURL("image/png"),shiftId:S.shift?.id||null,tender:S.shift?.tender||"",kind:"sale",device:S.deviceId,statusHistory:[{status,ts:new Date().toISOString()}]};
   await put("transactions",t);resetForm();renderRecent();showReceipt(t);
 };
@@ -242,7 +261,7 @@ function txRowHtml(t,fixed){
 }
 async function handleTxAction(e,refreshFn){
   const ok=e.target.dataset.ok,fx=e.target.dataset.fix;
-  if(ok){const t=(await all("transactions")).find(x=>x.id===ok);t.status="OK";t.dirty=true;t.statusHistory.push({status:"OK",ts:new Date().toISOString()});await put("transactions",t);await refreshFn();toast("Marked OK.")}
+  if(ok){const t=(await all("transactions")).find(x=>x.id===ok);t.status="OK";if(S.shift&&!t.shiftId){t.shiftId=S.shift.id;t.tender=S.shift.tender}t.dirty=true;t.statusHistory.push({status:"OK",ts:new Date().toISOString()});await put("transactions",t);await refreshFn();toast("Confirmed OK.")}
   if(fx){const t=(await all("transactions")).find(x=>x.id===fx);
     const d=modal(`<h3>Correct entry</h3><p class="note">The original record is kept. A new offsetting entry reverses ${peso(t.amount)} (${t.type}, ref ${t.ref}). Record the right values as a new transaction afterward.</p>
     <label for="cn">Reason for correction (required)</label><textarea id="cn" rows="3"></textarea><div class="btns"><button class="btn" id="cOk">Log correction</button><button class="btn sec" id="cNo">Cancel</button></div>`);
@@ -259,7 +278,7 @@ async function renderRecent(){
   const fixed=new Set(txs.filter(t=>t.kind==="correction").map(t=>t.corrects));
   const todayStr=day(new Date().toISOString());
   const visible=txs.filter(t=>day(t.ts)===todayStr&&(S.shift?t.shiftId===S.shift.id:(!t.shiftId&&t.device===S.deviceId)));
-  const pend=visible.filter(t=>t.status==="Pending");
+  const pend=txs.filter(t=>t.status==="Pending"&&day(t.ts)===todayStr);
   $("#pendingBox").hidden=!pend.length;
   $("#pendCount").textContent=pend.length;
   $("#pendingList").innerHTML=pend.length?`<table><tr><th>Time</th><th>Reference</th><th>Type</th><th>Amount</th><th>Status</th><th></th></tr>`+pend.map(t=>txRowHtml(t,fixed)).join("")+`</table>`:"";
@@ -508,8 +527,8 @@ const TBL={transactions:"sarisafe_transactions",shifts:"sarisafe_shifts"};
 const DEFAULT_CLOUD={
   url:"https://lcfdxountexmtmnhuynw.supabase.co",
   key:"sb_publishable_QJtZjV-w2YgPZPN7LryR7g_KvhB6ZRb",
-  email:"tender@fuentezstore.com",
-  password:"tender123"
+  email:"xyllannel@gmail.com",
+  password:"Neyaxayen123"
 };
 const cloudCfg=async()=>(await getSet("cloud"))||(DEFAULT_CLOUD.email&&DEFAULT_CLOUD.password&&DEFAULT_CLOUD.email!=="YOUR_STAFF_EMAIL"?{...DEFAULT_CLOUD}:null);
 function setCloud(s){const c=$("#cloudChip"),m={ok:"☁ Synced",syncing:"☁ Syncing…",offline:"☁ Offline – will sync later",error:"☁ Sync error"};if(s==="off"){c.hidden=true;return}c.hidden=false;c.textContent=m[s];c.title=S.err||""}
@@ -592,7 +611,7 @@ if("serviceWorker" in navigator&&location.protocol.startsWith("http"))navigator.
     document.querySelector("main").innerHTML=`<div class="card"><h2>Storage is unavailable</h2><p>This browser has blocked IndexedDB (for example, in private browsing). Enable site storage or use a normal browser window, then reload.</p></div>`;return}
   if(!(await getSet("pin"))){await setSet("pin",await hashPin("1234"));await setSet("pinDefault",true)}
   S.deviceId=await getSet("deviceId");if(!S.deviceId){S.deviceId=uid();await setSet("deviceId",S.deviceId)}
-  await loadTiers();await refreshShift();show("counter");
+  await loadTiers();await refreshShift();syncStatusByType();show("counter");
   syncNow();setInterval(syncNow,45000);
   addEventListener("online",syncNow);addEventListener("offline",async()=>{if(await cloudCfg())setCloud("offline")});
 })();
