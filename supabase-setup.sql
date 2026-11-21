@@ -1,0 +1,356 @@
+
+-- =========================================================
+-- SARISAFE: COMPLETE SUPABASE DATABASE SETUP
+-- One store, multiple authorized users and devices
+-- =========================================================
+
+-- 1. CREATE THE STORE
+create table if not exists public.sarisafe_stores (
+  id uuid primary key default gen_random_uuid(),
+  name text not null,
+  created_at timestamptz not null default now()
+);
+
+-- Fixed store ID so all SariSafe users share the same store.
+insert into public.sarisafe_stores (id, name)
+values (
+  '11111111-1111-4111-8111-111111111111',
+  'Fuentez Store'
+)
+on conflict (id) do nothing;
+
+
+-- 2. CREATE USER PROFILES
+-- Each profile connects a Supabase Auth user to the store.
+
+create table if not exists public.sarisafe_profiles (
+  user_id uuid primary key references auth.users(id) on delete cascade,
+  store_id uuid not null references public.sarisafe_stores(id),
+  full_name text,
+  role text not null check (role in ('owner', 'staff')),
+  created_at timestamptz not null default now()
+);
+
+
+-- 3. CREATE TRANSACTIONS TABLE
+-- Existing transaction details remain inside the JSONB data column.
+
+create table if not exists public.sarisafe_transactions (
+  id text primary key,
+  ts timestamptz not null,
+  data jsonb not null,
+  store_id uuid,
+  created_by uuid references auth.users(id),
+  updated_by uuid references auth.users(id),
+  updated_at timestamptz not null default now()
+);
+
+-- Add missing columns if the table already existed.
+alter table public.sarisafe_transactions
+  add column if not exists store_id uuid,
+  add column if not exists created_by uuid references auth.users(id),
+  add column if not exists updated_by uuid references auth.users(id),
+  add column if not exists updated_at timestamptz default now();
+
+-- Assign existing records to Fuentez Store.
+update public.sarisafe_transactions
+set store_id = '11111111-1111-4111-8111-111111111111'
+where store_id is null;
+
+alter table public.sarisafe_transactions
+  alter column store_id set not null;
+
+
+-- 4. CREATE SHIFTS TABLE
+
+create table if not exists public.sarisafe_shifts (
+  id text primary key,
+  ts timestamptz not null,
+  data jsonb not null,
+  store_id uuid,
+  created_by uuid references auth.users(id),
+  updated_by uuid references auth.users(id),
+  updated_at timestamptz not null default now()
+);
+
+alter table public.sarisafe_shifts
+  add column if not exists store_id uuid,
+  add column if not exists created_by uuid references auth.users(id),
+  add column if not exists updated_by uuid references auth.users(id),
+  add column if not exists updated_at timestamptz default now();
+
+update public.sarisafe_shifts
+set store_id = '11111111-1111-4111-8111-111111111111'
+where store_id is null;
+
+alter table public.sarisafe_shifts
+  alter column store_id set not null;
+
+
+-- 5. ADD STORE FOREIGN KEYS TO BOTH TABLES
+
+do $$
+begin
+  if not exists (
+    select 1 from pg_constraint
+    where conname = 'sarisafe_transactions_store_fk'
+      and conrelid = 'public.sarisafe_transactions'::regclass
+  ) then
+    alter table public.sarisafe_transactions
+      add constraint sarisafe_transactions_store_fk
+      foreign key (store_id)
+      references public.sarisafe_stores(id);
+  end if;
+
+  if not exists (
+    select 1 from pg_constraint
+    where conname = 'sarisafe_shifts_store_fk'
+      and conrelid = 'public.sarisafe_shifts'::regclass
+  ) then
+    alter table public.sarisafe_shifts
+      add constraint sarisafe_shifts_store_fk
+      foreign key (store_id)
+      references public.sarisafe_stores(id);
+  end if;
+end;
+$$;
+
+
+-- 6. CREATE INDEXES FOR FASTER SYNCHRONIZATION
+
+create index if not exists sarisafe_tx_upd
+on public.sarisafe_transactions(updated_at);
+
+create index if not exists sarisafe_sh_upd
+on public.sarisafe_shifts(updated_at);
+
+create index if not exists sarisafe_tx_store
+on public.sarisafe_transactions(store_id);
+
+create index if not exists sarisafe_sh_store
+on public.sarisafe_shifts(store_id);
+
+
+-- 7. FUNCTION TO IDENTIFY THE LOGGED-IN USER'S STORE
+
+create or replace function public.current_sarisafe_store_id()
+returns uuid
+language sql
+stable
+security definer
+set search_path = public, pg_temp
+as $$
+  select store_id
+  from public.sarisafe_profiles
+  where user_id = auth.uid()
+  limit 1;
+$$;
+
+
+-- 8. AUTOMATIC USER AND TIMESTAMP TRACKING
+
+create or replace function public.sarisafe_touch()
+returns trigger
+language plpgsql
+as $$
+begin
+  if tg_op = 'INSERT' then
+    if new.store_id is null then
+      new.store_id := public.current_sarisafe_store_id();
+    end if;
+
+    new.created_by := auth.uid();
+    new.updated_by := auth.uid();
+  else
+    -- Preserve the original creator and store.
+    new.store_id := old.store_id;
+    new.created_by := old.created_by;
+    new.updated_by := auth.uid();
+  end if;
+
+  new.updated_at := now();
+
+  return new;
+end;
+$$;
+
+
+-- 9. ATTACH AUTOMATIC TRACKING TO TRANSACTIONS
+
+drop trigger if exists sarisafe_tx_touch
+on public.sarisafe_transactions;
+
+create trigger sarisafe_tx_touch
+before insert or update
+on public.sarisafe_transactions
+for each row
+execute function public.sarisafe_touch();
+
+
+-- 10. ATTACH AUTOMATIC TRACKING TO SHIFTS
+
+drop trigger if exists sarisafe_sh_touch
+on public.sarisafe_shifts;
+
+create trigger sarisafe_sh_touch
+before insert or update
+on public.sarisafe_shifts
+for each row
+execute function public.sarisafe_touch();
+
+
+-- 11. ENABLE ROW LEVEL SECURITY
+
+alter table public.sarisafe_stores enable row level security;
+alter table public.sarisafe_profiles enable row level security;
+alter table public.sarisafe_transactions enable row level security;
+alter table public.sarisafe_shifts enable row level security;
+
+
+-- 12. REMOVE THE PREVIOUS BROAD ACCESS POLICIES
+
+drop policy if exists "store read"
+on public.sarisafe_transactions;
+
+drop policy if exists "store insert"
+on public.sarisafe_transactions;
+
+drop policy if exists "store update"
+on public.sarisafe_transactions;
+
+drop policy if exists "store read"
+on public.sarisafe_shifts;
+
+drop policy if exists "store insert"
+on public.sarisafe_shifts;
+
+drop policy if exists "store update"
+on public.sarisafe_shifts;
+
+
+-- 13. STORE ACCESS POLICY
+
+drop policy if exists "sarisafe_store_read"
+on public.sarisafe_stores;
+
+create policy "sarisafe_store_read"
+on public.sarisafe_stores
+for select
+to authenticated
+using (
+  id = public.current_sarisafe_store_id()
+);
+
+
+-- 14. USER PROFILE ACCESS POLICY
+
+drop policy if exists "sarisafe_profiles_read"
+on public.sarisafe_profiles;
+
+create policy "sarisafe_profiles_read"
+on public.sarisafe_profiles
+for select
+to authenticated
+using (
+  user_id = auth.uid()
+  or store_id = public.current_sarisafe_store_id()
+);
+
+
+-- 15. TRANSACTION ACCESS POLICIES
+
+drop policy if exists "sarisafe_transactions_read"
+on public.sarisafe_transactions;
+
+create policy "sarisafe_transactions_read"
+on public.sarisafe_transactions
+for select
+to authenticated
+using (
+  store_id = public.current_sarisafe_store_id()
+);
+
+drop policy if exists "sarisafe_transactions_insert"
+on public.sarisafe_transactions;
+
+create policy "sarisafe_transactions_insert"
+on public.sarisafe_transactions
+for insert
+to authenticated
+with check (
+  store_id = public.current_sarisafe_store_id()
+);
+
+drop policy if exists "sarisafe_transactions_update"
+on public.sarisafe_transactions;
+
+create policy "sarisafe_transactions_update"
+on public.sarisafe_transactions
+for update
+to authenticated
+using (
+  store_id = public.current_sarisafe_store_id()
+)
+with check (
+  store_id = public.current_sarisafe_store_id()
+);
+
+
+-- 16. SHIFT ACCESS POLICIES
+
+drop policy if exists "sarisafe_shifts_read"
+on public.sarisafe_shifts;
+
+create policy "sarisafe_shifts_read"
+on public.sarisafe_shifts
+for select
+to authenticated
+using (
+  store_id = public.current_sarisafe_store_id()
+);
+
+drop policy if exists "sarisafe_shifts_insert"
+on public.sarisafe_shifts;
+
+create policy "sarisafe_shifts_insert"
+on public.sarisafe_shifts
+for insert
+to authenticated
+with check (
+  store_id = public.current_sarisafe_store_id()
+);
+
+drop policy if exists "sarisafe_shifts_update"
+on public.sarisafe_shifts;
+
+create policy "sarisafe_shifts_update"
+on public.sarisafe_shifts
+for update
+to authenticated
+using (
+  store_id = public.current_sarisafe_store_id()
+)
+with check (
+  store_id = public.current_sarisafe_store_id()
+);
+
+
+-- 17. GRANT REQUIRED DATABASE PERMISSIONS
+
+grant usage on schema public to authenticated;
+
+grant select
+on public.sarisafe_stores, public.sarisafe_profiles
+to authenticated;
+
+grant select, insert, update
+on public.sarisafe_transactions, public.sarisafe_shifts
+to authenticated;
+
+grant execute
+on function public.current_sarisafe_store_id()
+to authenticated;
+
+-- =========================================================
+-- END OF SARISAFE DATABASE SETUP
+-- =========================================================

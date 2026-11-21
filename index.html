@@ -1,0 +1,492 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SariSafe – GCash Transaction Recording and Verification</title>
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<meta name="theme-color" content="#007cff">
+<!--
+  SariSafe (CSC 106) – vanilla HTML/CSS/JS, no external requests (NFR-04, NFR-06).
+  Storage: IndexedDB "SariSafeDB" (FR-04, NFR-05). Requirement IDs refer to LW4 catalog.
+-->
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<header>
+  <h1>SariSafe <span class="note" style="color:#c9d3ea">Fuentez Store</span><span class="badge" id="roleBadge">Store Tender</span></h1>
+  <span class="chip" id="cloudChip" hidden></span><button class="btn sec sm" id="ownerBtn">Owner login</button>
+</header>
+<nav id="nav"></nav>
+<main>
+<div id="banners"></div>
+
+<!-- COUNTER (FR-01, FR-02, FR-03, FR-08, FR-09, FR-10) -->
+<section id="v-counter">
+  <div class="wallet">
+    <div class="wl"><span>Expected GCash wallet</span><button id="eye" aria-label="Show or hide balances">👁 Show / hide</button></div>
+    <b id="wBal">–</b>
+    <div class="wsub"><div><small>Cash drawer</small><span id="wCash">–</span></div><div><small>Shift</small><span id="wShift">–</span></div></div>
+  </div>
+  <div class="card">
+    <h2>New transaction</h2>
+    <label for="ref">GCash reference number (13 digits)</label>
+    <input id="ref" inputmode="numeric" autocomplete="off" maxlength="13" placeholder="0000000000000">
+    <div id="refInd">Enter the full 13-digit reference number.</div>
+    <label>Transaction type</label>
+    <div class="seg">
+      <label><input type="radio" name="type" value="Cash-In" checked>Cash-In</label>
+      <label><input type="radio" name="type" value="Cash-Out">Cash-Out</label>
+    </div>
+    <div class="row">
+      <div><label for="amount">Amount (₱)</label><input id="amount" type="number" inputmode="decimal" min="1" step="0.01">
+        <div class="chips" id="chips"><button type="button" data-a="100">₱100</button><button type="button" data-a="200">₱200</button><button type="button" data-a="500">₱500</button><button type="button" data-a="1000">₱1,000</button></div></div>
+      <div><label for="fee">Service fee / patong (₱) <span id="feeNote" class="note"></span></label><input id="fee" type="number" inputmode="decimal" min="0" step="0.01"><button type="button" class="btn sec sm" id="feeAuto" hidden style="margin-top:6px">Use auto fee</button></div>
+    </div>
+    <div class="row">
+      <div><label for="cname">Customer name</label><input id="cname" autocomplete="off" placeholder="Full name"></div>
+      <div><label for="addr">Address (optional)</label><input id="addr" autocomplete="off" placeholder="e.g. P-1 Sumilihon, Butuan City"></div>
+    </div>
+    <div class="row">
+      <div><label for="phone">Customer phone (09XXXXXXXXX)</label><input id="phone" inputmode="numeric" maxlength="11" placeholder="09123456789"></div>
+      <div><label for="status">Status</label><select id="status"><option>OK</option><option>Pending</option><option>Duplicate</option></select></div>
+    </div>
+    <label>Customer signature</label>
+    <canvas id="sig" width="600" height="200" tabindex="0" aria-label="Signature pad"></canvas>
+    <div class="btns">
+      <button class="btn sec sm" id="sigClear">Clear signature</button>
+    </div>
+    <div class="btns"><button class="btn" id="saveTx">Save transaction</button><button class="btn sec" id="resetTx">Clear form</button></div>
+  </div>
+  <div class="card"><h2>Recent entries</h2><div class="tw" id="recent"></div></div>
+</section>
+
+<section id="v-shift" hidden></section>
+<section id="v-summary" hidden></section>
+<section id="v-log" hidden></section>
+<section id="v-settings" hidden></section>
+<section id="v-backup" hidden></section>
+</main>
+<div id="printArea"></div>
+<dialog id="dlg"></dialog>
+<div id="okPop" aria-hidden="true"><div><svg viewBox="0 0 52 52"><circle cx="26" cy="26" r="24"/><path d="M14 27l8 8 16-17"/></svg><p>Transaction saved</p></div></div>
+<div id="toast"></div>
+
+<script>
+"use strict";
+/* ---------- helpers ---------- */
+const $=s=>document.querySelector(s);
+const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const peso=n=>"₱"+Number(n||0).toLocaleString("en-PH",{minimumFractionDigits:2,maximumFractionDigits:2});
+const fmt=iso=>new Date(iso).toLocaleString("en-PH",{dateStyle:"short",timeStyle:"short"});
+const stamp=iso=>{const d=new Date(iso),p=n=>String(n).padStart(2,"0");return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`};
+const day=iso=>new Date(iso).toLocaleDateString("en-CA");
+const uid=()=>(crypto.randomUUID?crypto.randomUUID():Date.now().toString(36)+Math.random().toString(36).slice(2));
+function toast(m){const t=$("#toast");t.textContent=m;t.style.display="block";clearTimeout(toast.t);toast.t=setTimeout(()=>t.style.display="none",2600)}
+function modal(html,cls=""){const d=$("#dlg");d.className=cls;d.innerHTML=html;if(!d.open)d.showModal();return d}
+const closeModal=()=>$("#dlg").open&&$("#dlg").close();
+async function hashPin(p){try{const b=await crypto.subtle.digest("SHA-256",new TextEncoder().encode("sarisafe"+p));return[...new Uint8Array(b)].map(x=>x.toString(16).padStart(2,"0")).join("")}catch{return"x"+btoa("sarisafe"+p)}}
+
+/* ---------- IndexedDB (FR-04, NFR-05) ---------- */
+let D;
+const rq=r=>new Promise((ok,no)=>{r.onsuccess=()=>ok(r.result);r.onerror=()=>no(r.error)});
+const store=(n,m="readonly")=>D.transaction(n,m).objectStore(n);
+const putRaw=(n,v)=>rq(store(n,"readwrite").put(v));
+const put=(n,v)=>putRaw(n,v).then(r=>{if(n!=="settings")kick();return r});
+const all=n=>rq(store(n).getAll());
+const byRef=r=>rq(store("transactions").index("ref").getAll(r));
+const getSet=async k=>(await rq(store("settings").get(k)))?.value;
+const setSet=(k,value)=>put("settings",{key:k,value});
+function openDB(){return new Promise((ok,no)=>{
+  if(!window.indexedDB)return no(new Error("IndexedDB unavailable"));
+  const r=indexedDB.open("SariSafeDB",1);
+  r.onupgradeneeded=()=>{const d=r.result,t=d.createObjectStore("transactions",{keyPath:"id"});t.createIndex("ref","ref");t.createIndex("ts","ts");d.createObjectStore("shifts",{keyPath:"id"});d.createObjectStore("settings",{keyPath:"key"})};
+  r.onsuccess=()=>ok(r.result);r.onerror=()=>no(r.error)})}
+
+/* ---------- state ---------- */
+const S={role:"tender",tab:"counter",tiers:[],shift:null,manualFee:false,signed:false,alerted:""};
+const DEFAULT_TIERS=[{min:1,max:500,fee:10},{min:501,max:1000,fee:20},{min:1001,max:1500,fee:30},{min:1501,max:2000,fee:40},{min:2001,max:2500,fee:50},{min:2501,max:3000,fee:60}];
+const TABS={tender:[["counter","Counter"],["shift","Shift"]],owner:[["counter","Counter"],["shift","Shift"],["summary","Summary"],["log","Log"],["settings","Fees"],["backup","Backup"]]};
+
+/* ---------- fee tiers (FR-09) ---------- */
+const calcFee=a=>{const t=S.tiers.find(x=>a>=x.min&&a<=x.max);return t?t.fee:null};
+/* balance effect of a transaction. Cash-In: drawer +amount+fee, wallet -amount.
+   Cash-Out: drawer -amount, wallet +amount+fee. Corrections carry negated amount/fee so the same formula offsets them.
+   (Assumption to confirm with the store owner.) */
+const eff=t=>t.type==="Cash-In"?{c:t.amount+t.fee,w:-t.amount}:{c:-t.amount,w:t.amount+t.fee};
+const counted=t=>t.status!=="Duplicate";
+function balances(sh,txs){let c=sh.startCash,w=sh.startWallet;txs.filter(t=>t.shiftId===sh.id&&counted(t)).forEach(t=>{const e=eff(t);c+=e.c;w+=e.w});return{c,w}}
+async function refreshShift(){const s=(await all("shifts")).sort((a,b)=>a.startedAt<b.startedAt?1:-1);S.shift=s.find(x=>!x.endedAt&&(!x.device||x.device===S.deviceId))||null;banners()}
+async function loadTiers(){S.tiers=(await getSet("tiers"))||DEFAULT_TIERS}
+
+/* ---------- navigation / roles (FR-05, FR-07) ---------- */
+function nav(){
+  const IC={counter:"M3 11l9-8 9 8v10a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z",shift:"M12 7v5l3 2M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18z",summary:"M4 20V10M10 20V4M16 20v-7M22 20H2",log:"M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01",settings:"M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6",backup:"M12 3v12m0 0l-4-4m4 4l4-4M4 21h16"};
+  $("#nav").innerHTML=TABS[S.role].map(([k,l])=>`<button data-tab="${k}" class="${S.tab===k?"on":""}"><svg viewBox="0 0 24 24"><path d="${IC[k]}"/></svg><span>${l}</span></button>`).join("");
+  $("#roleBadge").textContent=S.role==="owner"?"Store Owner":"Store Tender";
+  $("#ownerBtn").textContent=S.role==="owner"?"Lock owner view":"Owner login";
+}
+function show(tab){
+  S.tab=tab;document.querySelectorAll("main>section").forEach(s=>s.hidden=s.id!=="v-"+tab);nav();
+  ({counter:renderRecent,shift:renderShift,summary:renderSummary,log:renderLog,settings:renderSettings,backup:renderBackup})[tab]();
+  if(tab==="log"||tab==="summary")syncNow();
+}
+$("#nav").onclick=e=>{const b=e.target.closest("button[data-tab]");if(b)show(b.dataset.tab)};
+$("#ownerBtn").onclick=()=>{
+  if(S.role==="owner"){S.role="tender";show("counter");return}
+  let pin="";
+  const d=modal(`<div class="pinbox"><div class="lock">🔒</div><h3>Store Owner</h3><p class="note">Enter your 4-digit PIN</p>
+   <div class="dots" id="dots"><i></i><i></i><i></i><i></i></div><p id="pinErr" class="pinErr" aria-live="polite"></p>
+   <div class="pad">${[1,2,3,4,5,6,7,8,9].map(n=>`<button type="button" data-k="${n}">${n}</button>`).join("")}<button type="button" class="x" data-k="cancel">Cancel</button><button type="button" data-k="0">0</button><button type="button" class="x" data-k="back" aria-label="Delete">⌫</button></div></div>`,"pin");
+  const paint=()=>d.querySelectorAll("#dots i").forEach((x,i)=>x.classList.toggle("on",i<pin.length));
+  const press=async k=>{
+    if(k==="cancel"){closeModal();return}
+    if(k==="back")pin=pin.slice(0,-1);else if(/^\d$/.test(k)&&pin.length<4)pin+=k;
+    $("#pinErr").textContent="";paint();
+    if(pin.length<4)return;
+    if(await hashPin(pin)===await getSet("pin")){closeModal();S.role="owner";show("summary");banners()}
+    else{const dots=$("#dots");$("#pinErr").textContent="Invalid PIN. Try again.";dots.classList.remove("bad");void dots.offsetWidth;dots.classList.add("bad");pin="";setTimeout(()=>{dots.classList.remove("bad");paint()},400)}
+  };
+  const key=e=>{if(e.key==="Backspace")press("back");else if(/^\d$/.test(e.key))press(e.key)};
+  document.addEventListener("keydown",key);
+  d.addEventListener("close",()=>document.removeEventListener("keydown",key),{once:true});
+  d.querySelector(".pad").onclick=e=>{const k=e.target.dataset.k;if(k!==undefined)press(k)};
+};
+async function banners(){
+  let h="";
+  if(!S.shift)h+=`<div class="warn">No shift is open. Transactions can be saved, but they will not count toward cash reconciliation. Open the Shift tab to start one.</div>`;
+  if(S.role==="owner"){
+    if(await getSet("pinDefault"))h+=`<div class="warn">You are still using the default PIN (1234). Change it under Fees &amp; PIN.</div>`;
+    const e=await storageInfo();if(e&&e.pct>=80)h+=`<div class="warn">Browser storage is ${e.pct.toFixed(0)}% full. Export a backup now (Backup tab).</div>`;
+  }
+  $("#banners").innerHTML=h;
+}
+
+/* ---------- signature pad (FR-08) ---------- */
+const cv=$("#sig"),cx=cv.getContext("2d");let drawing=false;
+cx.lineWidth=2.5;cx.lineCap="round";cx.strokeStyle="#14213d";
+const pos=e=>{const r=cv.getBoundingClientRect();return[(e.clientX-r.left)*cv.width/r.width,(e.clientY-r.top)*cv.height/r.height]};
+cv.onpointerdown=e=>{drawing=true;cv.setPointerCapture(e.pointerId);const[x,y]=pos(e);cx.beginPath();cx.moveTo(x,y);cx.lineTo(x+.1,y);cx.stroke();S.signed=true};
+cv.onpointermove=e=>{if(!drawing)return;const[x,y]=pos(e);cx.lineTo(x,y);cx.stroke()};
+cv.onpointerup=cv.onpointercancel=()=>drawing=false;
+function clearSig(){cx.clearRect(0,0,cv.width,cv.height);S.signed=false}
+$("#sigClear").onclick=clearSig;
+
+/* ---------- duplicate lookup (FR-01, FR-02, NFR-01) ---------- */
+async function findDup(ref){return(await byRef(ref)).filter(t=>t.kind!=="correction")}
+function showDup(hits){
+  const prev=hits.map(t=>`<li>${fmt(t.ts)} – ${esc(t.type)} ${peso(t.amount)} (<span class="st ${t.status}">${t.status}</span>)</li>`).join("");
+  const d=modal(`<h3>⚠ Duplicate reference number!</h3><p>This 13-digit reference was already recorded:</p><ul>${prev}</ul>
+  <p><b>Do not process this transaction.</b></p>
+  <div class="btns"><button class="btn red" id="dCancel">Cancel entry</button><button class="btn sec" id="dLog">Log as Duplicate attempt</button></div>`,"alert");
+  d.querySelector("#dCancel").onclick=()=>{$("#ref").value="";S.alerted="";indicate("");closeModal();$("#ref").focus()};
+  d.querySelector("#dLog").onclick=()=>{$("#status").value="Duplicate";closeModal();$("#amount").focus()};
+}
+function indicate(ref,ms,hits){
+  const el=$("#refInd");el.className="";
+  if(ref.length<13){el.textContent=ref.length?`${ref.length}/13 digits entered`:"Enter the full 13-digit reference number.";return}
+  if(hits&&hits.length){el.className="dup";el.textContent=`DUPLICATE – already recorded ${fmt(hits[0].ts)} (checked in ${ms} ms)`}
+  else{el.className="ok";el.textContent=`No local duplicate found (checked in ${ms} ms)`}
+}
+$("#ref").oninput=async e=>{
+  const v=e.target.value=e.target.value.replace(/\D/g,"").slice(0,13);
+  if(v.length<13){S.alerted="";indicate(v);return}
+  const t0=performance.now(),hits=await findDup(v),ms=Math.round(performance.now()-t0);
+  indicate(v,ms,hits);
+  if(hits.length&&S.alerted!==v){S.alerted=v;showDup(hits)}
+};
+
+/* ---------- fee auto-calc with override (FR-09) ---------- */
+$("#amount").oninput=()=>{
+  if(S.manualFee)return;const a=parseFloat($("#amount").value),f=a>0?calcFee(a):null;
+  $("#fee").value=f===null?"":f;$("#feeNote").textContent=a>0?(f===null?"(no tier – enter manually)":"(auto)"):"";
+};
+$("#fee").oninput=()=>{S.manualFee=$("#fee").value!=="";$("#feeAuto").hidden=!S.manualFee;if(S.manualFee)$("#feeNote").textContent="(manual override)";else $("#amount").oninput()};
+$("#feeAuto").onclick=()=>{S.manualFee=false;$("#feeAuto").hidden=true;$("#fee").value="";$("#amount").oninput()};
+
+function resetForm(){
+  ["ref","amount","fee","phone","cname","addr"].forEach(i=>$("#"+i).value="");$("#status").value="OK";
+  document.querySelector('input[name=type][value="Cash-In"]').checked=true;
+  S.manualFee=false;$("#feeAuto").hidden=true;S.alerted="";$("#feeNote").textContent="";clearSig();indicate("");
+}
+$("#resetTx").onclick=resetForm;
+
+/* ---------- record transaction (FR-03, FR-10) ---------- */
+$("#saveTx").onclick=async()=>{
+  const ref=$("#ref").value,amount=parseFloat($("#amount").value),fee=parseFloat($("#fee").value||"0"),phone=$("#phone").value,status=$("#status").value;
+  const err=!/^\d{13}$/.test(ref)?"Reference number must be exactly 13 digits."
+    :!(amount>0)?"Enter a valid amount."
+    :!$("#cname").value.trim()?"Enter the customer's name."
+    :!(fee>=0)?"Enter a valid service fee."
+    :!/^09\d{9}$/.test(phone)?"Phone number must be 11 digits starting with 09."
+    :!S.signed?"Customer signature is required."
+    :null;
+  if(err){toast(err);return}
+  const hits=await findDup(ref);
+  if(hits.length&&status!=="Duplicate"){showDup(hits);return}
+  const t={id:uid(),ts:new Date().toISOString(),ref,type:document.querySelector("input[name=type]:checked").value,amount,fee,phone,status,name:$("#cname").value.trim(),addr:$("#addr").value.trim(),
+    sig:cv.toDataURL("image/png"),shiftId:S.shift?.id||null,tender:S.shift?.tender||"",kind:"sale",device:S.deviceId,deviceName:S.deviceName||"",statusHistory:[{status,ts:new Date().toISOString()}]};
+  await put("transactions",t);resetForm();renderRecent();successPop();
+};
+
+/* ---------- recent list, status update, corrections (FR-10) ---------- */
+async function renderRecent(){
+  const txs=(await all("transactions")).sort((a,b)=>a.ts<b.ts?1:-1);
+  walletCard(txs);
+  const fixed=new Set(txs.filter(t=>t.kind==="correction").map(t=>t.corrects));
+  $("#recent").innerHTML=txs.length?`<table><tr><th>Time</th><th>Reference</th><th>Type</th><th>Amount</th><th>Status</th><th></th></tr>`+
+   txs.slice(0,8).map(t=>`<tr><td>${fmt(t.ts)}</td><td>${t.ref}</td><td>${t.kind==="correction"?"Correction":t.type}</td><td>${peso(t.amount)}</td><td class="st ${t.status}">${t.status}</td><td>
+   ${t.status==="Pending"?`<button class="btn grn sm" data-ok="${t.id}">Mark OK</button> `:""}
+   ${t.kind==="sale"&&t.status!=="Duplicate"&&!fixed.has(t.id)?`<button class="btn sec sm" data-fix="${t.id}">Correct</button>`:""}</td></tr>`).join("")+`</table>`
+   :`<p class="note">No transactions yet.</p>`;
+}
+$("#recent").onclick=async e=>{
+  const ok=e.target.dataset.ok,fx=e.target.dataset.fix;
+  if(ok){const t=(await all("transactions")).find(x=>x.id===ok);t.status="OK";t.dirty=true;t.statusHistory.push({status:"OK",ts:new Date().toISOString()});await put("transactions",t);renderRecent();toast("Marked OK.")}
+  if(fx){const t=(await all("transactions")).find(x=>x.id===fx);
+    const d=modal(`<h3>Correct entry</h3><p class="note">The original record is kept. A new offsetting entry reverses ${peso(t.amount)} (${t.type}, ref ${t.ref}). Record the right values as a new transaction afterward.</p>
+    <label for="cn">Reason for correction (required)</label><textarea id="cn" rows="3"></textarea><div class="btns"><button class="btn" id="cOk">Log correction</button><button class="btn sec" id="cNo">Cancel</button></div>`);
+    d.querySelector("#cNo").onclick=closeModal;
+    d.querySelector("#cOk").onclick=async()=>{const n=d.querySelector("#cn").value.trim();if(!n){toast("An explanatory note is required.");return}
+      await put("transactions",{id:uid(),ts:new Date().toISOString(),ref:t.ref,type:t.type,amount:-t.amount,fee:-t.fee,phone:t.phone,name:t.name,addr:t.addr,status:"OK",sig:"",
+        shiftId:S.shift?.id||null,tender:S.shift?.tender||"",kind:"correction",device:S.deviceId,deviceName:S.deviceName||"",corrects:t.id,note:n,statusHistory:[{status:"OK",ts:new Date().toISOString()}]});
+      closeModal();renderRecent();toast("Correction logged.")};
+  }
+};
+
+/* ---------- shift & cash float reconciliation (FR-11) ---------- */
+async function renderShift(){
+  const el=$("#v-shift"),sh=S.shift;
+  if(!sh){el.innerHTML=`<div class="card"><h2>Start shift</h2><label for="sn">Tender name</label><input id="sn">
+   <div class="row"><div><label for="sc">Starting physical cash float (₱)</label><input id="sc" type="number" min="0" step="0.01"></div>
+   <div><label for="sw">Starting GCash wallet balance (₱)</label><input id="sw" type="number" min="0" step="0.01"></div></div>
+   <div class="btns"><button class="btn" id="sStart">Start shift</button></div></div>`;
+   $("#sStart").onclick=async()=>{const n=$("#sn").value.trim(),c=parseFloat($("#sc").value),w=parseFloat($("#sw").value);
+     if(!n||!(c>=0)||!(w>=0)){toast("Enter the tender name and both starting balances.");return}
+     await put("shifts",{id:uid(),device:S.deviceId,deviceName:S.deviceName||"",tender:n,startedAt:new Date().toISOString(),startCash:c,startWallet:w});await refreshShift();renderShift();toast("Shift started.")};
+   return}
+  const txs=await all("transactions"),b=balances(sh,txs);
+  el.innerHTML=`<div class="card"><h2>Shift open – ${esc(sh.tender)}</h2><p class="note">Started ${fmt(sh.startedAt)}</p>
+   <div class="kpi"><div>Starting cash<b>${peso(sh.startCash)}</b></div><div>Starting GCash<b>${peso(sh.startWallet)}</b></div>
+   <div>Expected cash now<b>${peso(b.c)}</b></div><div>Expected GCash now<b>${peso(b.w)}</b></div></div></div>
+   <div class="card"><h2>Close shift</h2><div class="row"><div><label for="cc">Counted physical cash (₱)</label><input id="cc" type="number" min="0" step="0.01"></div>
+   <div><label for="cw">Actual GCash wallet balance (₱)</label><input id="cw" type="number" min="0" step="0.01"></div></div>
+   <div class="btns"><button class="btn red" id="sEnd">Close shift &amp; show summary</button></div></div>`;
+  $("#sEnd").onclick=async()=>{const cc=parseFloat($("#cc").value),cw=parseFloat($("#cw").value);
+    if(!(cc>=0)||!(cw>=0)){toast("Enter both counted amounts.");return}
+    const done={...sh,dirty:true,endedAt:new Date().toISOString(),expectedCash:b.c,expectedWallet:b.w,countedCash:cc,countedWallet:cw};
+    await put("shifts",done);await refreshShift();zReading(done,txs);renderShift()};
+}
+function zReading(s,txs){
+  const t=txs.filter(x=>x.shiftId===s.id&&counted(x)),sum=(ty,f)=>t.filter(x=>x.type===ty).reduce((a,x)=>a+x[f],0);
+  const dc=s.countedCash-s.expectedCash,dw=s.countedWallet-s.expectedWallet,lab=d=>d===0?"Balanced":d>0?`Over ${peso(d)}`:`Short ${peso(-d)}`;
+  const d=modal(`<h3>Shift summary</h3><p class="note">${esc(s.tender)} · ${fmt(s.startedAt)} – ${fmt(s.endedAt)}</p>
+   <table><tr><td>Cash-In total</td><td>${peso(sum("Cash-In","amount"))}</td></tr><tr><td>Cash-Out total</td><td>${peso(sum("Cash-Out","amount"))}</td></tr>
+   <tr><td>Service fees</td><td>${peso(sum("Cash-In","fee")+sum("Cash-Out","fee"))}</td></tr>
+   <tr><td>Expected / counted cash</td><td>${peso(s.expectedCash)} / ${peso(s.countedCash)}</td></tr><tr><td><b>Cash result</b></td><td><b>${lab(dc)}</b></td></tr>
+   <tr><td>Expected / actual GCash</td><td>${peso(s.expectedWallet)} / ${peso(s.countedWallet)}</td></tr><tr><td><b>GCash result</b></td><td><b>${lab(dw)}</b></td></tr></table>
+   <div class="btns"><button class="btn" id="zOk">Done</button></div>`);d.querySelector("#zOk").onclick=closeModal;
+}
+
+/* ---------- owner: summary ---------- */
+async function renderSummary(){
+  const el=$("#v-summary"),dt=el.dataset.d||day(new Date().toISOString());el.dataset.d=dt;
+  const txs=await all("transactions"),shifts=(await all("shifts")).filter(s=>day(s.startedAt)===dt);
+  const d=txs.filter(t=>day(t.ts)===dt),ok=d.filter(counted),sum=(ty,f)=>ok.filter(t=>t.type===ty).reduce((a,t)=>a+t[f],0);
+  el.innerHTML=`<div class="card"><h2>Daily summary</h2><label for="sd">Date</label><input id="sd" type="date" value="${dt}" style="max-width:200px">
+   <div class="kpi" style="margin-top:12px"><div>Cash-In<b>${peso(sum("Cash-In","amount"))}</b></div><div>Cash-Out<b>${peso(sum("Cash-Out","amount"))}</b></div>
+   <div>Service fees earned<b>${peso(sum("Cash-In","fee")+sum("Cash-Out","fee"))}</b></div><div>Transactions<b>${ok.filter(t=>t.kind==="sale").length}</b></div>
+   <div>Pending<b>${d.filter(t=>t.status==="Pending").length}</b></div><div>Duplicate attempts<b>${d.filter(t=>t.status==="Duplicate").length}</b></div></div>
+   <p class="note">Corrections are netted into the totals.</p></div>
+   <div class="card"><h2>Shifts</h2>${shifts.length?`<div class="tw"><table><tr><th>Tender</th><th>Device</th><th>Started</th><th>Ended</th><th>Cash result</th><th>GCash result</th></tr>`+shifts.map(s=>{
+     const r=(c,e)=>s.endedAt?(c-e===0?"Balanced":(c-e>0?"Over ":"Short ")+peso(Math.abs(c-e))):"Open";
+     return`<tr><td>${esc(s.tender)}</td><td>${esc(s.deviceName||"–")}</td><td>${fmt(s.startedAt)}</td><td>${s.endedAt?fmt(s.endedAt):"–"}</td><td>${r(s.countedCash,s.expectedCash)}</td><td>${r(s.countedWallet,s.expectedWallet)}</td></tr>`}).join("")+`</table></div>`:`<p class="note">No shifts on this date.</p>`}</div>`;
+  $("#sd").onchange=e=>{el.dataset.d=e.target.value;renderSummary()};
+}
+
+/* ---------- owner: transaction log with signatures (FR-08) ---------- */
+async function renderLog(){
+  const el=$("#v-log"),raw=el.dataset.q||"",q=raw.toLowerCase();
+  const txs=(await all("transactions")).sort((a,b)=>a.ts<b.ts?1:-1).filter(t=>!q||t.ref.includes(q)||(t.name||"").toLowerCase().includes(q));
+  const days=new Map();txs.forEach(t=>{const k=day(t.ts);if(!days.has(k))days.set(k,[]);days.get(k).push(t)});
+  const today=day(new Date().toISOString()),yest=day(new Date(Date.now()-864e5).toISOString());
+  const sum=(d,ty,f)=>d.filter(t=>counted(t)&&(!ty||t.type===ty)).reduce((a,t)=>a+t[f],0);
+  const time=iso=>new Date(iso).toLocaleTimeString("en-PH",{hour:"numeric",minute:"2-digit"});
+  let n=0;
+  const groups=[...days].map(([k,d])=>{
+    const sales=d.filter(t=>t.kind!=="correction"&&t.status!=="Duplicate").length,dups=d.filter(t=>t.status==="Duplicate").length,fixes=d.filter(t=>t.kind==="correction").length;
+    const dev={};d.forEach(t=>{if(t.kind==="correction"||t.status==="Duplicate")return;const nm=t.deviceName||"Unknown device";dev[nm]=(dev[nm]||0)+1});
+    const lbl=new Date(k+"T00:00:00").toLocaleDateString("en-PH",{weekday:"long",year:"numeric",month:"long",day:"numeric"});
+    const tag=k===today?"Today · ":k===yest?"Yesterday · ":"";
+    return `<details class="day" ${n++<2||q?"open":""}><summary><span>${tag}${lbl}</span><span class="dc">${sales} transaction${sales===1?"":"s"}</span></summary>
+     <div class="kpi"><div>Cash-In<b>${peso(sum(d,"Cash-In","amount"))}</b></div><div>Cash-Out<b>${peso(sum(d,"Cash-Out","amount"))}</b></div><div>Service fees<b>${peso(sum(d,"","fee"))}</b></div></div>
+     <p class="dev"><b>By device:</b> ${Object.entries(dev).map(([a,c])=>esc(a)+" – "+c).join(" · ")||"–"}${dups?` · <span class="st Duplicate">${dups} duplicate attempt${dups===1?"":"s"}</span>`:""}${fixes?` · ${fixes} correction${fixes===1?"":"s"}`:""}</p>
+     <div class="tw"><table><tr><th>Timestamp</th><th>Reference</th><th>Customer</th><th>Type</th><th>Amount</th><th>Fee</th><th>Status</th><th>Device</th><th>Details</th></tr>`+
+     d.map(t=>`<tr><td class="ts">${stamp(t.ts)}</td><td>${t.ref}</td><td>${esc(t.name||"—")}</td><td><span class="pill ${t.type==="Cash-In"?"in":"out"}">${t.kind==="correction"?"Correction":t.type}</span></td><td>${peso(t.amount)}</td><td>${peso(t.fee)}</td><td class="st ${t.status}">${t.status}</td><td>${esc(t.deviceName||"—")}</td><td><button class="btn sec sm" data-view="${t.id}">View</button></td></tr>`).join("")+`</table></div></details>`;
+  }).join("");
+  el.innerHTML=`<div class="card"><h2>Transaction history <button class="btn sec sm" id="lsync" style="float:right">⟳ Sync now</button></h2><label for="lq">Search reference or customer name</label><input id="lq" value="${esc(raw)}" style="max-width:320px">
+   <p class="note">${txs.length} record(s) across ${days.size} day(s), from all connected devices. Records cannot be edited or deleted.</p>${groups||'<p class="note">No transactions found.</p>'}</div>`;
+  $("#lsync").onclick=async()=>{await syncNow();toast("Log is up to date.");renderLog()};
+  $("#lq").oninput=e=>{el.dataset.q=e.target.value;renderLog().then(()=>{const i=$("#lq");i.focus();i.setSelectionRange(99,99)})};
+  el.onclick=e=>{const id=e.target.dataset.view;if(id)viewTx(txs.find(x=>x.id===id))};
+}
+function viewTx(t){
+  const rows=[["Reference",t.ref],["Timestamp",stamp(t.ts)],["Customer",t.name||"—"],["Address",t.addr||"—"],["Phone",t.phone],["Type",t.kind==="correction"?"Correction ("+t.type+")":t.type],["Amount",peso(t.amount)],["Service charge",peso(t.fee)],["Status",t.status],["Tender",t.tender||"—"],["Device",t.deviceName||"—"]];
+  if(t.statusHistory&&t.statusHistory.length>1)rows.push(["Status history",t.statusHistory.map(s=>s.status+" ("+stamp(s.ts)+")").join(" → ")]);
+  if(t.note)rows.push(["Correction note",t.note]);
+  const body=`<h2 style="font-size:1.5rem">SariSafe Transaction</h2>${rows.map(([k,v])=>`<p class="dl"><b>${k}:</b> ${esc(v)}</p>`).join("")}${t.sig?`<h3>Customer Signature</h3><img src="${t.sig}" alt="Signature" class="bigsig">`:""}`;
+  $("#printArea").innerHTML=body;
+  const d=modal(`<div class="detail">${body}<div class="btns"><button class="btn" id="vPrint">Print details</button><button class="btn sec" id="vClose">Close</button></div></div>`,"view");
+  d.querySelector("#vPrint").onclick=()=>window.print();d.querySelector("#vClose").onclick=closeModal;
+}
+
+/* ---------- owner: fee tiers & PIN (FR-07, FR-09) ---------- */
+function renderSettings(){
+  const el=$("#v-settings"),row=(t={min:"",max:"",fee:""})=>`<div class="row tier" style="margin-bottom:6px"><input type="number" placeholder="From ₱" value="${t.min}"><input type="number" placeholder="To ₱" value="${t.max}"><input type="number" placeholder="Fee ₱" value="${t.fee}"></div>`;
+  el.innerHTML=`<div class="card"><h2>Service fee tiers (patong)</h2><div id="tiers">${S.tiers.map(row).join("")}</div>
+   <div class="btns"><button class="btn sec" id="addT">Add tier</button><button class="btn" id="saveT">Save tiers</button></div></div>
+   <div class="card"><h2>Change owner PIN</h2><div class="row"><div><label for="p0">Current PIN</label><input id="p0" type="password" inputmode="numeric" maxlength="4"></div>
+   <div><label for="p1">New 4-digit PIN</label><input id="p1" type="password" inputmode="numeric" maxlength="4"></div></div><div class="btns"><button class="btn" id="savePin">Change PIN</button></div></div>`;
+  $("#addT").onclick=()=>$("#tiers").insertAdjacentHTML("beforeend",row());
+  $("#saveT").onclick=async()=>{
+    const ts=[...document.querySelectorAll(".tier")].map(r=>{const i=r.querySelectorAll("input");return{min:parseFloat(i[0].value),max:parseFloat(i[1].value),fee:parseFloat(i[2].value)}}).filter(t=>!isNaN(t.min)||!isNaN(t.max)||!isNaN(t.fee));
+    if(ts.some(t=>isNaN(t.min)||isNaN(t.max)||isNaN(t.fee)||t.min>t.max||t.fee<0)){toast("Each tier needs valid From, To and Fee values.");return}
+    ts.sort((a,b)=>a.min-b.min);if(ts.some((t,i)=>i&&t.min<=ts[i-1].max)){toast("Tiers must not overlap.");return}
+    S.tiers=ts;await setSet("tiers",ts);toast("Fee tiers saved.")};
+  $("#savePin").onclick=async()=>{const a=$("#p0").value,b=$("#p1").value;
+    if(await hashPin(a)!==await getSet("pin")){toast("Current PIN is incorrect.");return}
+    if(!/^\d{4}$/.test(b)){toast("New PIN must be exactly 4 digits.");return}
+    await setSet("pin",await hashPin(b));await setSet("pinDefault",false);banners();renderSettings();toast("PIN changed.")};
+}
+
+/* ---------- owner: backup, export, import, storage health (FR-06, FR-12, NFR-05) ---------- */
+async function storageInfo(){try{const e=await navigator.storage.estimate();return{used:e.usage,quota:e.quota,pct:e.quota?e.usage/e.quota*100:0}}catch{return null}}
+function download(name,type,text){const a=document.createElement("a");a.href=URL.createObjectURL(new Blob([text],{type}));a.download=name;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),1000)}
+async function renderBackup(){
+  const e=await storageInfo(),lb=await getSet("lastBackup");
+  $("#v-backup").innerHTML=`<div class="card"><h2>Storage health</h2>${e?`<div class="bar ${e.pct>=80?"hi":""}"><i style="width:${Math.min(100,e.pct)}%"></i></div>
+   <p class="note">${(e.used/1048576).toFixed(1)} MB used of ${(e.quota/1048576).toFixed(0)} MB (${e.pct.toFixed(1)}%). A backup warning appears at 80%.</p>`:`<p class="note">Storage usage is not available in this browser.</p>`}
+   <p class="note">Last backup: ${lb?fmt(lb):"never"}. Browser data lives on this device only – export regularly, especially before clearing site data.</p></div>
+   <div class="card"><h2>Export</h2><div class="btns"><button class="btn" id="xCsv">Export transaction log (CSV)</button><button class="btn" id="xJson">Full backup (JSON)</button></div>
+   <p class="note">CSV is for spreadsheets (no signature images). The JSON backup includes transactions, signatures, shift history, and fee tiers.</p></div>
+   <div class="card"><h2>Restore from backup</h2><label for="imp">Choose a SariSafe JSON backup file</label><input id="imp" type="file" accept=".json,application/json">
+   <p class="note">Records are merged into this device's database; existing records are not deleted. The PIN is not restored.</p></div>`;
+  renderCloudCard();
+  $("#xCsv").onclick=async()=>{
+    const H=["id","timestamp","reference","type","amount","fee","customer_name","address","phone","status","entry_kind","corrects_id","note","shift_id","tender"],q=v=>`"${String(v??"").replace(/"/g,'""')}"`;
+    const rows=(await all("transactions")).sort((a,b)=>a.ts<b.ts?-1:1).map(t=>[t.id,t.ts,t.ref,t.type,t.amount,t.fee,t.name,t.addr,t.phone,t.status,t.kind,t.corrects,t.note,t.shiftId,t.tender].map(q).join(","));
+    download(`sarisafe-transactions-${day(new Date().toISOString())}.csv`,"text/csv",H.join(",")+"\n"+rows.join("\n"));await setSet("lastBackup",new Date().toISOString());renderBackup()};
+  $("#xJson").onclick=async()=>{
+    const b={app:"SariSafe",version:1,exportedAt:new Date().toISOString(),transactions:await all("transactions"),shifts:await all("shifts"),tiers:S.tiers};
+    download(`sarisafe-backup-${day(b.exportedAt)}.json`,"application/json",JSON.stringify(b));await setSet("lastBackup",b.exportedAt);renderBackup()};
+  $("#imp").onchange=async ev=>{
+    const f=ev.target.files[0];if(!f)return;
+    try{const b=JSON.parse(await f.text());
+      if(b.app!=="SariSafe"||!Array.isArray(b.transactions)||!Array.isArray(b.shifts))throw 0;
+      if(!confirm(`Restore ${b.transactions.length} transactions and ${b.shifts.length} shifts into this device?`))return;
+      for(const t of b.transactions)await put("transactions",t);for(const s of b.shifts)await put("shifts",s);
+      if(Array.isArray(b.tiers)&&b.tiers.length){S.tiers=b.tiers;await setSet("tiers",b.tiers)}
+      await refreshShift();toast("Backup restored.");renderBackup()}
+    catch{toast("That file is not a valid SariSafe backup.")}
+  };
+}
+
+/* ---------- wallet card, quick amounts, success animation ---------- */
+function walletCard(txs){
+  let w="–",c="–",s="No shift open";
+  if(S.shift){const b=balances(S.shift,txs);w=peso(b.w);c=peso(b.c);s=S.shift.tender}
+  $("#wBal").textContent=S.hide&&S.shift?"₱ ••••••":w;$("#wCash").textContent=S.hide&&S.shift?"••••":c;$("#wShift").textContent=s;
+}
+$("#eye").onclick=()=>{S.hide=!S.hide;renderRecent()};
+$("#chips").onclick=e=>{const a=e.target.dataset.a;if(a){$("#amount").value=a;$("#amount").oninput()}};
+function successPop(){const o=$("#okPop");o.classList.remove("show");void o.offsetWidth;o.classList.add("show");setTimeout(()=>o.classList.remove("show"),1400)}
+
+/* ---------- cloud sync (optional, Supabase REST; app still works fully offline) ---------- */
+const TBL={transactions:"sarisafe_transactions",shifts:"sarisafe_shifts"};
+const cloudCfg=async()=>(await getSet("cloud"))||null;
+function setCloud(s){const c=$("#cloudChip"),m={ok:"☁ Synced",syncing:"☁ Syncing…",offline:"☁ Offline – will sync later",error:"☁ Sync error"};if(s==="off"){c.hidden=true;return}c.hidden=false;c.textContent=m[s];c.title=S.err||""}
+async function apiErr(r){let t="";try{const j=await r.clone().json();t=j.message||j.msg||j.error_description||j.error||""}catch{}return r.status+" "+t}
+async function sbToken(cfg,body,grant){
+  const r=await fetch(`${cfg.url}/auth/v1/token?grant_type=${grant}`,{method:"POST",headers:{apikey:cfg.key,"Content-Type":"application/json"},body:JSON.stringify(body)});
+  if(!r.ok)throw new Error("Login failed: "+await apiErr(r));
+  const j=await r.json();cfg.access=j.access_token;cfg.refresh=j.refresh_token;cfg.exp=Date.now()+(j.expires_in-60)*1000;await setSet("cloud",cfg);return cfg}
+const sb=(cfg,path,o={})=>fetch(cfg.url+"/rest/v1/"+path,{...o,headers:{apikey:cfg.key,Authorization:"Bearer "+cfg.access,"Content-Type":"application/json",...(o.headers||{})}});
+const getRec=(n,id)=>rq(store(n).get(id));
+let syncing=false,again=false,kickT;
+function kick(){if(syncing){again=true;return}clearTimeout(kickT);kickT=setTimeout(syncNow,1500)}
+async function syncNow(){
+  if(syncing)return;const cfg=await cloudCfg();if(!cfg||!cfg.refresh){setCloud("off");return}
+  if(!navigator.onLine){setCloud("offline");return}
+  syncing=true;setCloud("syncing");let changed=false;
+  try{
+    if(!cfg.access||Date.now()>cfg.exp)await sbToken(cfg,{refresh_token:cfg.refresh},"refresh_token");
+    for(const [n,tbl] of Object.entries(TBL)){
+      /* 1) push records created or changed on this device */
+      const dirty=(await all(n)).filter(x=>x.dirty!==false);
+      for(let i=0;i<dirty.length;i+=20){
+        const ch=dirty.slice(i,i+20);
+        const rows=ch.map(x=>{const{dirty:_d,srv:_s,...d}=x;return{id:x.id,ts:x.ts||x.startedAt,data:d}});
+        const r=await sb(cfg,tbl,{method:"POST",headers:{Prefer:"resolution=merge-duplicates,return=minimal"},body:JSON.stringify(rows)});
+        if(!r.ok)throw new Error("Upload failed: "+await apiErr(r));
+        for(const x of ch){x.dirty=false;await putRaw(n,x)}
+      }
+      /* 2) pull records from other devices (so duplicate lookups see them too) */
+      let lp=await getSet("pull_"+n),first=true;
+      for(;;){
+        const since=first&&lp?new Date(Date.parse(lp)-60000).toISOString():(lp||"1970-01-01T00:00:00Z");first=false;
+        const r=await sb(cfg,`${tbl}?select=id,data,updated_at&updated_at=gt.${encodeURIComponent(since)}&order=updated_at.asc&limit=200`);
+        if(!r.ok)throw new Error("Download failed: "+await apiErr(r));
+        const rows=await r.json();
+        for(const row of rows){
+          lp=row.updated_at;const cur=await getRec(n,row.id);
+          if(cur&&cur.dirty!==false)continue;
+          if(!cur||cur.srv!==row.updated_at){await putRaw(n,{...row.data,dirty:false,srv:row.updated_at});changed=true}
+        }
+        if(rows.length<200)break;
+      }
+      if(lp)await setSet("pull_"+n,lp);
+    }
+    S.lastSync=new Date().toISOString();S.err="";setCloud("ok");
+    if(changed){await refreshShift();if(["counter","summary","log"].includes(S.tab))show(S.tab)}
+  }catch(e){S.err=e instanceof TypeError?"Cannot reach Supabase (network or wrong URL).":(e.message||String(e));setCloud(e instanceof TypeError||!navigator.onLine?"offline":"error")}
+  finally{syncing=false;if(again){again=false;kick()}}
+}
+async function renderCloudCard(){
+  const c=await cloudCfg()||{},on=!!c.refresh,el=document.createElement("div");el.className="card";
+  el.innerHTML=`<h2>Cloud sync – see transactions from other devices</h2>`+(on?
+   `<p class="note">Connected as ${esc(c.email)}. This device: <b>${esc(c.deviceName||"")}</b>${S.lastSync?" · last sync "+fmt(S.lastSync):""}</p>${S.err?`<p class="note" style="color:var(--red)"><b>Last error:</b> ${esc(S.err)}</p>`:""}<div class="btns"><button class="btn" id="cSync">Sync now</button><button class="btn red" id="cOff">Disconnect this device</button></div>`
+  :`<p class="note">Records upload to your Supabase project when there is internet. The counter still works offline. Use the values from the README setup.</p>
+   <label for="cu">Supabase project URL</label><input id="cu" placeholder="https://xxxx.supabase.co" value="${esc(c.url||"")}">
+   <label for="ck">Supabase anon (public) key</label><input id="ck" value="${esc(c.key||"")}">
+   <div class="row"><div><label for="ce">Store account email</label><input id="ce" type="email" value="${esc(c.email||"")}"></div><div><label for="cp">Store account password</label><input id="cp" type="password"></div></div>
+   <label for="cd">This device's name (e.g. Counter phone, Owner laptop)</label><input id="cd" value="${esc(c.deviceName||"")}">
+   <div class="btns"><button class="btn" id="cOn">Connect</button></div><p id="cErr" class="note" style="color:var(--red)"></p>`);
+  $("#v-backup").appendChild(el);
+  if(on){
+    $("#cSync").onclick=async()=>{await syncNow();toast("Sync finished.");renderBackup()};
+    $("#cOff").onclick=async()=>{if(!confirm("Disconnect this device from the cloud? Records on this device stay."))return;
+      await setSet("cloud",null);await setSet("pull_transactions",null);await setSet("pull_shifts",null);S.deviceName="";setCloud("off");renderBackup()};
+  }else $("#cOn").onclick=async()=>{
+    const cfg={url:$("#cu").value.trim().replace(/\/+$/,""),key:$("#ck").value.trim(),email:$("#ce").value.trim(),deviceName:$("#cd").value.trim()||"Device"},pw=$("#cp").value;
+    if(!/^https:\/\/.+/.test(cfg.url)||!cfg.key||!cfg.email||!pw){toast("Fill in all the cloud fields.");return}
+    try{await sbToken(cfg,{email:cfg.email,password:pw},"password");S.deviceName=cfg.deviceName;toast("Connected. Syncing…");await syncNow();renderBackup()}
+    catch(e){$("#cErr").textContent=(e instanceof TypeError?"Cannot reach Supabase. Check the Project URL and your internet. ":"")+(e.message||"");toast("Could not connect.")}
+  };
+}
+
+/* ---------- start ---------- */
+if("serviceWorker" in navigator&&location.protocol.startsWith("http"))navigator.serviceWorker.register("sw.js").catch(()=>{});
+(async()=>{
+  try{D=await openDB()}catch(e){
+    document.querySelector("main").innerHTML=`<div class="card"><h2>Storage is unavailable</h2><p>This browser has blocked IndexedDB (for example, in private browsing). Enable site storage or use a normal browser window, then reload.</p></div>`;return}
+  if(!(await getSet("pin"))){await setSet("pin",await hashPin("1234"));await setSet("pinDefault",true)}
+  S.deviceId=await getSet("deviceId");if(!S.deviceId){S.deviceId=uid();await setSet("deviceId",S.deviceId)}
+  S.deviceName=(await cloudCfg())?.deviceName||"";
+  await loadTiers();await refreshShift();show("counter");
+  syncNow();setInterval(syncNow,45000);
+  addEventListener("online",syncNow);addEventListener("offline",async()=>{if(await cloudCfg())setCloud("offline")});
+})();
+</script>
+</body>
+</html>
