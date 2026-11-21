@@ -104,3 +104,12 @@ dialog.view{max-width:520px;max-height:90vh;overflow:auto}
 .day .dev{padding:0 14px;font-size:.85rem;color:var(--mut)}
 .day .tw{padding:0 8px 8px}
 .ts{white-space:nowrap}
+/* Auto-popup transaction receipt */
+.rcpt-head{text-align:center;padding-bottom:10px;border-bottom:2px dashed var(--line);margin-bottom:10px}
+.rcpt-ok{display:inline-block;background:#e3f6ec;color:var(--grn);font-weight:700;font-size:.82rem;padding:3px 12px;border-radius:99px}
+.rcpt-body{display:flex;flex-direction:column;gap:6px;font-size:.92rem}
+.rcpt-row{display:flex;justify-content:space-between;align-items:baseline;gap:12px;padding:3px 0;border-bottom:1px solid #f0f4fa}
+.rcpt-row span:first-child{color:var(--mut);font-size:.85rem}
+.rcpt-row span:last-child{text-align:right}
+.rcpt-sig{margin-top:10px}
+.rcpt-sig .note{display:block;margin-bottom:4px}

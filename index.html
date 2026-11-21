@@ -111,9 +111,6 @@ const TABS={tender:[["counter","Counter"],["shift","Shift"]],owner:[["counter","
 
 /* ---------- fee tiers (FR-09) ---------- */
 const calcFee=a=>{const t=S.tiers.find(x=>a>=x.min&&a<=x.max);return t?t.fee:null};
-/* balance effect of a transaction. Cash-In: drawer +amount+fee, wallet -amount.
-   Cash-Out: drawer -amount, wallet +amount+fee. Corrections carry negated amount/fee so the same formula offsets them.
-   (Assumption to confirm with the store owner.) */
 const eff=t=>t.type==="Cash-In"?{c:t.amount+t.fee,w:-t.amount}:{c:-t.amount,w:t.amount+t.fee};
 const counted=t=>t.status!=="Duplicate";
 function balances(sh,txs){let c=sh.startCash,w=sh.startWallet;txs.filter(t=>t.shiftId===sh.id&&counted(t)).forEach(t=>{const e=eff(t);c+=e.c;w+=e.w});return{c,w}}
@@ -128,6 +125,7 @@ function nav(){
   $("#ownerBtn").textContent=S.role==="owner"?"Lock owner view":"Owner login";
 }
 function show(tab){
+  if(S.role!=="owner"&&!["counter","shift"].includes(tab))tab="counter";
   S.tab=tab;document.querySelectorAll("main>section").forEach(s=>s.hidden=s.id!=="v-"+tab);nav();
   ({counter:renderRecent,shift:renderShift,summary:renderSummary,log:renderLog,settings:renderSettings,backup:renderBackup})[tab]();
   if(tab==="log"||tab==="summary")syncNow();
@@ -227,7 +225,7 @@ $("#saveTx").onclick=async()=>{
   if(hits.length&&status!=="Duplicate"){showDup(hits);return}
   const t={id:uid(),ts:new Date().toISOString(),ref,type:document.querySelector("input[name=type]:checked").value,amount,fee,phone,status,name:$("#cname").value.trim(),addr:$("#addr").value.trim(),
     sig:cv.toDataURL("image/png"),shiftId:S.shift?.id||null,tender:S.shift?.tender||"",kind:"sale",device:S.deviceId,deviceName:S.deviceName||"",statusHistory:[{status,ts:new Date().toISOString()}]};
-  await put("transactions",t);resetForm();renderRecent();successPop();
+  await put("transactions",t);resetForm();renderRecent();showReceipt(t);
 };
 
 /* ---------- recent list, status update, corrections (FR-10) ---------- */
@@ -312,7 +310,6 @@ async function renderLog(){
   const days=new Map();txs.forEach(t=>{const k=day(t.ts);if(!days.has(k))days.set(k,[]);days.get(k).push(t)});
   const today=day(new Date().toISOString()),yest=day(new Date(Date.now()-864e5).toISOString());
   const sum=(d,ty,f)=>d.filter(t=>counted(t)&&(!ty||t.type===ty)).reduce((a,t)=>a+t[f],0);
-  const time=iso=>new Date(iso).toLocaleTimeString("en-PH",{hour:"numeric",minute:"2-digit"});
   let n=0;
   const groups=[...days].map(([k,d])=>{
     const sales=d.filter(t=>t.kind!=="correction"&&t.status!=="Duplicate").length,dups=d.filter(t=>t.status==="Duplicate").length,fixes=d.filter(t=>t.kind==="correction").length;
@@ -392,7 +389,7 @@ async function renderBackup(){
   };
 }
 
-/* ---------- wallet card, quick amounts, success animation ---------- */
+/* ---------- wallet card, quick amounts, auto-popup receipt ---------- */
 function walletCard(txs){
   let w="–",c="–",s="No shift open";
   if(S.shift){const b=balances(S.shift,txs);w=peso(b.w);c=peso(b.c);s=S.shift.tender}
@@ -401,6 +398,29 @@ function walletCard(txs){
 $("#eye").onclick=()=>{S.hide=!S.hide;renderRecent()};
 $("#chips").onclick=e=>{const a=e.target.dataset.a;if(a){$("#amount").value=a;$("#amount").oninput()}};
 function successPop(){const o=$("#okPop");o.classList.remove("show");void o.offsetWidth;o.classList.add("show");setTimeout(()=>o.classList.remove("show"),1400)}
+function showReceipt(t){
+  const total=Number(t.amount||0)+Number(t.fee||0);
+  const rows=[
+    ["Reference No.",`<b>${esc(t.ref)}</b>`],
+    ["Date & Time",esc(stamp(t.ts))],
+    ["Type",`<span class="pill ${t.type==="Cash-In"?"in":"out"}">${esc(t.type)}</span>`],
+    ["Amount",esc(peso(t.amount))],
+    ["Service Fee",esc(peso(t.fee))],
+    ["Total",`<b>${esc(peso(total))}</b>`],
+    ["Status",`<span class="st ${t.status}">${esc(t.status)}</span>`],
+    ["Customer",esc(t.name||"—")],
+    ["Phone",esc(t.phone||"—")]
+  ];
+  if(t.addr)rows.push(["Address",esc(t.addr)]);
+  if(t.tender)rows.push(["Tender",esc(t.tender)]);
+  const body=`<div class="rcpt-head"><span class="rcpt-ok">✓ Transaction Saved</span><h2 style="margin:6px 0 2px;font-size:1.35rem">SariSafe Receipt</h2><p class="note" style="margin:0">Fuentez Store · GCash Service</p></div>`
+    +`<div class="rcpt-body">${rows.map(([k,v])=>`<div class="rcpt-row"><span>${k}</span><span>${v}</span></div>`).join("")}</div>`
+    +(t.sig?`<div class="rcpt-sig"><span class="note">Customer Signature</span><img src="${t.sig}" alt="Customer Signature" class="bigsig"></div>`:"");
+  $("#printArea").innerHTML=body;
+  const d=modal(`<div class="detail">${body}<div class="btns"><button class="btn" id="rDone">Done</button><button class="btn sec" id="rPrint">Print</button></div></div>`,"view");
+  d.querySelector("#rDone").onclick=closeModal;
+  d.querySelector("#rPrint").onclick=()=>window.print();
+}
 
 /* ---------- cloud sync (optional, Supabase REST; app still works fully offline) ---------- */
 const TBL={transactions:"sarisafe_transactions",shifts:"sarisafe_shifts"};
@@ -422,7 +442,6 @@ async function syncNow(){
   try{
     if(!cfg.access||Date.now()>cfg.exp)await sbToken(cfg,{refresh_token:cfg.refresh},"refresh_token");
     for(const [n,tbl] of Object.entries(TBL)){
-      /* 1) push records created or changed on this device */
       const dirty=(await all(n)).filter(x=>x.dirty!==false);
       for(let i=0;i<dirty.length;i+=20){
         const ch=dirty.slice(i,i+20);
@@ -431,7 +450,6 @@ async function syncNow(){
         if(!r.ok)throw new Error("Upload failed: "+await apiErr(r));
         for(const x of ch){x.dirty=false;await putRaw(n,x)}
       }
-      /* 2) pull records from other devices (so duplicate lookups see them too) */
       let lp=await getSet("pull_"+n),first=true;
       for(;;){
         const since=first&&lp?new Date(Date.parse(lp)-60000).toISOString():(lp||"1970-01-01T00:00:00Z");first=false;
