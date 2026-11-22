@@ -193,7 +193,7 @@ $("#sigClear").onclick=clearSig;
 /* ---------- duplicate lookup (FR-01, FR-02, NFR-01) ---------- */
 async function findDup(ref){return(await byRef(ref)).filter(t=>t.kind!=="correction")}
 function showDup(hits){
-  const prev=hits.map(t=>`<li>${fmt(t.ts)} – ${esc(t.type)} ${peso(t.amount)} (<span class="st ${t.status}">${t.status}</span>)</li>`).join("");
+  const prev=hits.map(t=>`<li>${fmt(t.ts)} – ${esc(t.type)} ${peso(t.amount)} (<span class="st ${esc(t.status)}">${esc(t.status)}</span>)</li>`).join("");
   const d=modal(`<h3>⚠ Duplicate reference number!</h3><p>This 13-digit reference was already recorded:</p><ul>${prev}</ul>
   <p><b>Do not process this transaction.</b></p>
   <div class="btns"><button class="btn red" id="dCancel">Cancel entry</button><button class="btn sec" id="dLog">Log as Duplicate attempt</button></div>`,"alert");
@@ -274,15 +274,15 @@ $("#saveTx").onclick=async()=>{
 
 /* ---------- recent list (today / active shift only), status update, corrections (FR-10) ---------- */
 function txRowHtml(t,fixed){
-  return `<tr><td>${fmt(t.ts)}</td><td>${t.ref}</td><td>${t.kind==="correction"?"Correction":t.type}</td><td>${peso(t.amount)}</td><td class="st ${t.status}">${t.status}</td><td>
-   ${t.status==="Pending"?`<button class="btn grn sm" data-ok="${t.id}">Mark OK</button> `:""}
-   ${t.kind==="sale"&&t.status!=="Duplicate"&&!fixed.has(t.id)?`<button class="btn sec sm" data-fix="${t.id}">Correct</button>`:""}</td></tr>`;
+  return `<tr><td>${fmt(t.ts)}</td><td>${esc(t.ref)}</td><td>${t.kind==="correction"?"Correction":esc(t.type)}</td><td>${peso(t.amount)}</td><td class="st ${esc(t.status)}">${esc(t.status)}</td><td>
+   ${t.status==="Pending"?`<button class="btn grn sm" data-ok="${esc(t.id)}">Mark OK</button> `:""}
+   ${t.kind==="sale"&&t.status!=="Duplicate"&&!fixed.has(t.id)?`<button class="btn sec sm" data-fix="${esc(t.id)}">Correct</button>`:""}</td></tr>`;
 }
 async function handleTxAction(e,refreshFn){
   const ok=e.target.dataset.ok,fx=e.target.dataset.fix;
   if(ok){const t=(await all("transactions")).find(x=>x.id===ok);t.status="OK";if(S.shift&&!t.shiftId){t.shiftId=S.shift.id;t.tender=S.shift.tender}t.dirty=true;t.statusHistory.push({status:"OK",ts:new Date().toISOString()});await put("transactions",t);await refreshFn();toast("Confirmed OK.")}
   if(fx){const t=(await all("transactions")).find(x=>x.id===fx);
-    const d=modal(`<h3>Correct entry</h3><p class="note">The original record is kept. A new offsetting entry reverses ${peso(t.amount)} (${t.type}, ref ${t.ref}). Record the right values as a new transaction afterward.</p>
+    const d=modal(`<h3>Correct entry</h3><p class="note">The original record is kept. A new offsetting entry reverses ${peso(t.amount)} (${t.type}, ref ${esc(t.ref)}). Record the right values as a new transaction afterward.</p>
     <label for="cn">Reason for correction (required)</label><textarea id="cn" rows="3"></textarea><div class="btns"><button class="btn" id="cOk">Log correction</button><button class="btn sec" id="cNo">Cancel</button></div>`);
     d.querySelector("#cNo").onclick=closeModal;
     d.querySelector("#cOk").onclick=async()=>{const n=d.querySelector("#cn").value.trim();if(!n){toast("An explanatory note is required.");return}
@@ -453,7 +453,7 @@ async function renderLog(){
      <div class="kpi"><div>Cash-In<b>${peso(sum(d,"Cash-In","amount"))}</b></div><div>Cash-Out<b>${peso(sum(d,"Cash-Out","amount"))}</b></div><div>Service fees<b>${peso(sum(d,"","fee"))}</b></div></div>
      <p class="dev"><b>By tender:</b> ${Object.entries(tnd).map(([a,c])=>esc(a)+" – "+c).join(" · ")||"–"}${dups?` · <span class="st Duplicate">${dups} duplicate attempt${dups===1?"":"s"}</span>`:""}${fixes?` · ${fixes} correction${fixes===1?"":"s"}`:""}</p>
      <div class="tw"><table><tr><th>Timestamp</th><th>Reference</th><th>Customer</th><th>Type</th><th>Amount</th><th>Fee</th><th>Status</th><th>Tender</th><th>Details</th></tr>`+
-     d.map(t=>`<tr><td class="ts">${stamp(t.ts)}</td><td>${t.ref}</td><td>${esc(t.name||"—")}</td><td><span class="pill ${t.type==="Cash-In"?"in":"out"}">${t.kind==="correction"?"Correction":t.type}</span></td><td>${peso(t.amount)}</td><td>${peso(t.fee)}</td><td class="st ${t.status}">${t.status}</td><td>${esc(t.tender||"—")}</td><td><button class="btn sec sm" data-view="${t.id}">View</button></td></tr>`).join("")+`</table></div></details>`;
+     d.map(t=>`<tr><td class="ts">${stamp(t.ts)}</td><td>${esc(t.ref)}</td><td>${esc(t.name||"—")}</td><td><span class="pill ${t.type==="Cash-In"?"in":"out"}">${t.kind==="correction"?"Correction":esc(t.type)}</span></td><td>${peso(t.amount)}</td><td>${peso(t.fee)}</td><td class="st ${esc(t.status)}">${esc(t.status)}</td><td>${esc(t.tender||"—")}</td><td><button class="btn sec sm" data-view="${esc(t.id)}">View</button></td></tr>`).join("")+`</table></div></details>`;
   }).join("");
   el.innerHTML=`<div class="card"><h2>Transaction history <button class="btn sec sm" id="lsync" style="float:right">⟳ Sync now</button></h2>
    <label for="lq">Search reference, customer, or tender name</label><input id="lq" type="search" autocomplete="off" value="${esc(raw)}" style="max-width:340px">
@@ -588,7 +588,7 @@ function showReceipt(t){
     ["Amount",esc(peso(t.amount))],
     ["Service Fee",esc(peso(t.fee))],
     ["Total",`<b>${esc(peso(total))}</b>`],
-    ["Status",`<span class="st ${t.status}">${esc(t.status)}</span>`],
+    ["Status",`<span class="st ${esc(t.status)}">${esc(t.status)}</span>`],
     ["Customer",esc(t.name||"—")],
     ["Phone",esc(t.phone||"—")]
   ];
@@ -605,13 +605,11 @@ function showReceipt(t){
 
 /* ---------- cloud sync (optional, Supabase REST; app still works fully offline) ---------- */
 const TBL={transactions:"sarisafe_transactions",shifts:"sarisafe_shifts"};
-const DEFAULT_CLOUD={
-  url:"https://lcfdxountexmtmnhuynw.supabase.co",
-  key:"sb_publishable_QJtZjV-w2YgPZPN7LryR7g_KvhB6ZRb",
-  email:"xyllannel@gmail.com",
-  password:"Neyaxayen123"
-};
-const cloudCfg=async()=>(await getSet("cloud"))||(DEFAULT_CLOUD.email&&DEFAULT_CLOUD.password&&DEFAULT_CLOUD.email!=="YOUR_STAFF_EMAIL"?{...DEFAULT_CLOUD}:null);
+/* Fixed Supabase project. The URL and publishable key are public by design.
+   NEVER put the email, password, or a service_role / secret key in this file. */
+const SUPABASE_URL="https://lcfdxountexmtmnhuynw.supabase.co";
+const SUPABASE_KEY="sb_publishable_QJtZjV-w2YgPZPN7LryR7g_KvhB6ZRb";
+const cloudCfg=async()=>(await getSet("cloud"))||null;
 function setCloud(s){const c=$("#cloudChip"),m={ok:"☁ Synced",syncing:"☁ Syncing…",offline:"☁ Offline – will sync later",error:"☁ Sync error"};if(s==="off"){c.hidden=true;return}c.hidden=false;c.textContent=m[s];c.title=S.err||""}
 async function apiErr(r){let t="";try{const j=await r.clone().json();t=j.message||j.msg||j.error_description||j.error||""}catch{}return r.status+" "+t}
 async function sbToken(cfg,body,grant){
@@ -623,12 +621,11 @@ const getRec=(n,id)=>rq(store(n).get(id));
 let syncing=false,again=false,kickT;
 function kick(){if(syncing){again=true;return}clearTimeout(kickT);kickT=setTimeout(syncNow,1500)}
 async function syncNow(){
-  if(syncing)return;const cfg=await cloudCfg();if(!cfg||(!cfg.refresh&&!(cfg.email&&cfg.password))){setCloud("off");return}
+  if(syncing)return;const cfg=await cloudCfg();if(!cfg||!cfg.refresh){setCloud("off");return}
   if(!navigator.onLine){setCloud("offline");return}
   syncing=true;setCloud("syncing");let changed=false;
   try{
-    if(!cfg.refresh)await sbToken(cfg,{email:cfg.email,password:cfg.password},"password");
-    else if(!cfg.access||Date.now()>cfg.exp)await sbToken(cfg,{refresh_token:cfg.refresh},"refresh_token");
+    if(!cfg.access||Date.now()>cfg.exp)await sbToken(cfg,{refresh_token:cfg.refresh},"refresh_token");
     for(const [n,tbl] of Object.entries(TBL)){
       const dirty=(await all(n)).filter(x=>x.dirty!==false);
       for(let i=0;i<dirty.length;i+=20){
@@ -661,10 +658,8 @@ async function syncNow(){
 async function renderCloudCard(){
   const c=await cloudCfg()||{},on=!!c.refresh,el=document.createElement("div");el.className="card";
   el.innerHTML=`<h2>Cloud sync – see transactions from other devices</h2>`+(on?
-   `<p class="note">Connected as ${esc(c.email)}.${S.lastSync?" Last sync "+fmt(S.lastSync):""}</p>${S.err?`<p class="note" style="color:var(--red)"><b>Last error:</b> ${esc(c.err)}</p>`:""}<div class="btns"><button class="btn" id="cSync">Sync now</button><button class="btn red" id="cOff">Disconnect this device</button></div>`
-  :`<p class="note">Records upload to your Supabase project when there is internet. The counter still works offline. Use the values from the README setup.</p>
-   <label for="cu">Supabase project URL</label><input id="cu" placeholder="https://xxxx.supabase.co" value="${esc(c.url||"")}">
-   <label for="ck">Supabase anon (public) key</label><input id="ck" value="${esc(c.key||"")}">
+   `<p class="note">Connected as ${esc(c.email)}.${S.lastSync?" Last sync "+fmt(S.lastSync):""}</p>${S.err?`<p class="note" style="color:var(--red)"><b>Last error:</b> ${esc(S.err)}</p>`:""}<div class="btns"><button class="btn" id="cSync">Sync now</button><button class="btn red" id="cOff">Disconnect this device</button></div>`
+  :`<p class="note">Records upload to the store's cloud database when there is internet. The counter still works offline. Just enter the store account's email and password.</p>
    <div class="row"><div><label for="ce">Store account email</label><input id="ce" type="email" value="${esc(c.email||"")}"></div><div><label for="cp">Store account password</label><input id="cp" type="password"></div></div>
    <div class="btns"><button class="btn" id="cOn">Connect</button></div><p id="cErr" class="note" style="color:var(--red)"></p>`);
   $("#v-backup").appendChild(el);
@@ -673,8 +668,8 @@ async function renderCloudCard(){
     $("#cOff").onclick=async()=>{if(!confirm("Disconnect this device from the cloud? Records on this device stay."))return;
       await setSet("cloud",null);await setSet("pull_transactions",null);await setSet("pull_shifts",null);setCloud("off");renderBackup()};
   }else $("#cOn").onclick=async()=>{
-    const cfg={url:$("#cu").value.trim().replace(/\/+$/,""),key:$("#ck").value.trim(),email:$("#ce").value.trim()},pw=$("#cp").value;
-    if(!/^https:\/\/.+/.test(cfg.url)||!cfg.key||!cfg.email||!pw){toast("Fill in all the cloud fields.");return}
+    const cfg={url:SUPABASE_URL,key:SUPABASE_KEY,email:$("#ce").value.trim()},pw=$("#cp").value;
+    if(!cfg.email||!pw){toast("Enter the store account email and password.");return}
     try{await sbToken(cfg,{email:cfg.email,password:pw},"password");toast("Connected. Syncing…");await syncNow();renderBackup()}
     catch(e){$("#cErr").textContent=(e instanceof TypeError?"Cannot reach Supabase. Check the Project URL and your internet. ":"")+(e.message||"");toast("Could not connect.")}
   };
