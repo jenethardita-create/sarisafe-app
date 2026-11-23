@@ -31,9 +31,9 @@
   </div>
   <div class="card">
     <h2>New transaction</h2>
-    <label for="ref">GCash reference number (13 digits)</label>
-    <input id="ref" inputmode="numeric" autocomplete="off" maxlength="13" placeholder="0000000000000">
-    <div id="refInd">Enter the full 13-digit reference number.</div>
+    <label for="ref">GCash reference number</label>
+    <input id="ref" inputmode="numeric" autocomplete="off">
+    <div id="refInd"></div>
     <label>Transaction type</label>
     <div class="seg">
       <label><input type="radio" name="type" value="Cash-In" checked>Cash-In</label>
@@ -85,6 +85,10 @@
 <script>
 "use strict";
 /* ---------- helpers ---------- */
+/* Reference digits the tender types: 5 = last 5 digits of the GCash reference, 13 = full reference.
+   Change this ONE number to switch. (5 can show "possible duplicates" more often; see README.) */
+const REF_DIGITS=5;
+const REF_HINT=REF_DIGITS>=13?"Enter the full 13-digit reference number.":`Enter the last ${REF_DIGITS} digits of the GCash reference number.`;
 const $=s=>document.querySelector(s);
 const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const peso=n=>"₱"+Number(n||0).toLocaleString("en-PH",{minimumFractionDigits:2,maximumFractionDigits:2});
@@ -101,16 +105,19 @@ async function hashPin(p){try{const b=await crypto.subtle.digest("SHA-256",new T
 let D;
 const rq=r=>new Promise((ok,no)=>{r.onsuccess=()=>ok(r.result);r.onerror=()=>no(r.error)});
 const store=(n,m="readonly")=>D.transaction(n,m).objectStore(n);
-const putRaw=(n,v)=>rq(store(n,"readwrite").put(v));
-const put=(n,v)=>putRaw(n,v).then(r=>{if(n!=="settings")kick();return r});
+const putRaw=(n,v)=>{if(n==="transactions")v.tail=String(v.ref||"").slice(-5);return rq(store(n,"readwrite").put(v))};
+const put=(n,v)=>putRaw(n,v);
 const all=n=>rq(store(n).getAll());
 const byRef=r=>rq(store("transactions").index("ref").getAll(r));
 const getSet=async k=>(await rq(store("settings").get(k)))?.value;
 const setSet=(k,value)=>put("settings",{key:k,value});
 function openDB(){return new Promise((ok,no)=>{
   if(!window.indexedDB)return no(new Error("IndexedDB unavailable"));
-  const r=indexedDB.open("SariSafeDB",1);
-  r.onupgradeneeded=()=>{const d=r.result,t=d.createObjectStore("transactions",{keyPath:"id"});t.createIndex("ref","ref");t.createIndex("ts","ts");d.createObjectStore("shifts",{keyPath:"id"});d.createObjectStore("settings",{keyPath:"key"})};
+  const r=indexedDB.open("SariSafeDB",2);
+  r.onupgradeneeded=e=>{const d=r.result;let t;
+    if(e.oldVersion<1){t=d.createObjectStore("transactions",{keyPath:"id"});t.createIndex("ref","ref");t.createIndex("ts","ts");d.createObjectStore("shifts",{keyPath:"id"});d.createObjectStore("settings",{keyPath:"key"})}
+    else t=r.transaction.objectStore("transactions");
+    if(!t.indexNames.contains("tail")){t.createIndex("tail","tail");t.openCursor().onsuccess=ev=>{const c=ev.target.result;if(c){const v=c.value;v.tail=String(v.ref||"").slice(-5);c.update(v);c.continue()}}}};
   r.onsuccess=()=>ok(r.result);r.onerror=()=>no(r.error)})}
 
 /* ---------- state ---------- */
@@ -146,7 +153,6 @@ function show(tab){
   if(S.role!=="owner"&&!["counter","shift"].includes(tab))tab="counter";
   S.tab=tab;document.querySelectorAll("main>section").forEach(s=>s.hidden=s.id!=="v-"+tab);nav();
   ({counter:renderRecent,shift:renderShift,summary:renderSummary,log:renderLog,settings:renderSettings,backup:renderBackup})[tab]();
-  if(tab==="log"||tab==="summary")syncNow();
 }
 $("#nav").onclick=e=>{const b=e.target.closest("button[data-tab]");if(b)show(b.dataset.tab)};
 $("#ownerBtn").onclick=()=>{
@@ -191,29 +197,37 @@ function clearSig(){cx.clearRect(0,0,cv.width,cv.height);S.signed=false}
 $("#sigClear").onclick=clearSig;
 
 /* ---------- duplicate lookup (FR-01, FR-02, NFR-01) ---------- */
-async function findDup(ref){return(await byRef(ref)).filter(t=>t.kind!=="correction")}
+async function findDup(ref){
+  const rows=REF_DIGITS>=13?await byRef(ref):await rq(store("transactions").index("tail").getAll(ref.slice(-5)));
+  return rows.filter(t=>t.kind!=="correction")}
 function showDup(hits){
-  const prev=hits.map(t=>`<li>${fmt(t.ts)} – ${esc(t.type)} ${peso(t.amount)} (<span class="st ${esc(t.status)}">${esc(t.status)}</span>)</li>`).join("");
-  const d=modal(`<h3>⚠ Duplicate reference number!</h3><p>This 13-digit reference was already recorded:</p><ul>${prev}</ul>
-  <p><b>Do not process this transaction.</b></p>
-  <div class="btns"><button class="btn red" id="dCancel">Cancel entry</button><button class="btn sec" id="dLog">Log as Duplicate attempt</button></div>`,"alert");
+  const prev=hits.map(t=>`<li>${fmt(t.ts)} – ${esc(t.name||"—")}, ${esc(t.type)} ${peso(t.amount)} (<span class="st ${esc(t.status)}">${esc(t.status)}</span>)</li>`).join("");
+  const d=modal(`<h3>⚠ ${REF_DIGITS<13?"Possible duplicate":"Duplicate reference number!"}</h3><p>${REF_DIGITS<13?`The last ${REF_DIGITS} digits match an earlier transaction. Compare the full GCash receipt before you continue:`:"This 13-digit reference was already recorded:"}</p><ul>${prev}</ul>
+  <p><b>${REF_DIGITS<13?"If it is the same receipt, do not process it.":"Do not process this transaction."}</b></p>
+  <div class="btns"><button class="btn red" id="dCancel">Cancel entry</button><button class="btn sec" id="dLog">Log as Duplicate attempt</button>${REF_DIGITS<13?'<button class="btn grn" id="dOk">Different receipt – continue</button>':""}</div>`,"alert");
   d.querySelector("#dCancel").onclick=()=>{$("#ref").value="";S.alerted="";indicate("");syncStatusByType();closeModal();$("#ref").focus()};
   d.querySelector("#dLog").onclick=()=>{$("#status").value="Duplicate";$("#status").disabled=true;$("#statusNote").textContent="Flagged as Duplicate attempt.";closeModal();$("#amount").focus()};
+  const dOk=d.querySelector("#dOk");if(dOk)dOk.onclick=()=>{S.dupOk=$("#ref").value;closeModal();$("#amount").focus()};
 }
 function indicate(ref,ms,hits){
   const el=$("#refInd");el.className="";
-  if(ref.length<13){el.textContent=ref.length?`${ref.length}/13 digits entered`:"Enter the full 13-digit reference number.";return}
-  if(hits&&hits.length){el.className="dup";el.textContent=`DUPLICATE – already recorded ${fmt(hits[0].ts)} (checked in ${ms} ms)`}
+  if(ref.length<REF_DIGITS){el.textContent=ref.length?`${ref.length}/${REF_DIGITS} digits entered`:REF_HINT;return}
+  if(hits&&hits.length){el.className="dup";el.textContent=`${REF_DIGITS<13?"POSSIBLE DUPLICATE":"DUPLICATE"} – already recorded ${fmt(hits[0].ts)} (checked in ${ms} ms)`}
   else{el.className="ok";el.textContent=`No local duplicate found (checked in ${ms} ms)`}
 }
 $("#ref").oninput=async e=>{
-  const v=e.target.value=e.target.value.replace(/\D/g,"").slice(0,13);
-  if(v.length<13){S.alerted="";indicate(v);syncStatusByType();return}
+  S.dupOk="";
+  const v=e.target.value=e.target.value.replace(/\D/g,"").slice(0,REF_DIGITS);
+  if(v.length<REF_DIGITS){S.alerted="";indicate(v);syncStatusByType();return}
   const t0=performance.now(),hits=await findDup(v),ms=Math.round(performance.now()-t0);
   indicate(v,ms,hits);
   if(hits.length&&S.alerted!==v){S.alerted=v;showDup(hits)}
   else if(!hits.length){S.alerted="";syncStatusByType()}
 };
+
+$("#ref").maxLength=REF_DIGITS;$("#ref").placeholder="0".repeat(REF_DIGITS);
+document.querySelector('label[for="ref"]').textContent=`GCash reference number (${REF_DIGITS>=13?"13 digits":"last "+REF_DIGITS+" digits"})`;
+indicate("");
 
 /* ---------- transaction type status rule (Cash-In = OK only, Cash-Out = Pending first) ---------- */
 function syncStatusByType(){
@@ -243,7 +257,7 @@ $("#fee").oninput=()=>{S.manualFee=$("#fee").value!=="";$("#feeAuto").hidden=!S.
 $("#feeAuto").onclick=()=>{S.manualFee=false;$("#feeAuto").hidden=true;$("#fee").value="";$("#amount").oninput()};
 
 function resetForm(){
-  ["ref","amount","fee","phone","cname","addr"].forEach(i=>$("#"+i).value="");
+  ["ref","amount","fee","phone","cname","addr"].forEach(i=>$("#"+i).value="");S.dupOk="";
   document.querySelector('input[name=type][value="Cash-In"]').checked=true;
   $("#custAck").checked=false;
   S.manualFee=false;$("#feeAuto").hidden=true;S.alerted="";$("#feeNote").textContent="";
@@ -256,7 +270,7 @@ $("#saveTx").onclick=async()=>{
   const txType=document.querySelector("input[name=type]:checked").value;
   const ref=$("#ref").value,amount=parseFloat($("#amount").value),fee=parseFloat($("#fee").value||"0"),phone=$("#phone").value;
   const status=$("#status").value==="Duplicate"?"Duplicate":(txType==="Cash-Out"?"Pending":"OK");
-  const err=!/^\d{13}$/.test(ref)?"Reference number must be exactly 13 digits."
+  const err=!new RegExp("^\\d{"+REF_DIGITS+"}$").test(ref)?`Reference number must be exactly ${REF_DIGITS} digits.`
     :!(amount>0)?"Enter a valid amount."
     :!$("#cname").value.trim()?"Enter the customer's name."
     :!(fee>=0)?"Enter a valid service fee."
@@ -266,9 +280,9 @@ $("#saveTx").onclick=async()=>{
     :null;
   if(err){toast(err);return}
   const hits=await findDup(ref);
-  if(hits.length&&status!=="Duplicate"){showDup(hits);return}
+  if(hits.length&&status!=="Duplicate"&&S.dupOk!==ref){showDup(hits);return}
   const t={id:uid(),ts:new Date().toISOString(),ref,type:txType,amount,fee,phone,status,name:$("#cname").value.trim(),addr:$("#addr").value.trim(),
-    sig:cv.toDataURL("image/png"),shiftId:S.shift?.id||null,tender:S.shift?.tender||"",kind:"sale",device:S.deviceId,statusHistory:[{status,ts:new Date().toISOString()}]};
+    sig:cv.toDataURL("image/png"),shiftId:S.shift?.id||null,tender:S.shift?.tender||"",kind:"sale",dupOverride:hits.length>0&&status!=="Duplicate",device:S.deviceId,statusHistory:[{status,ts:new Date().toISOString()}]};
   await put("transactions",t);resetForm();renderRecent();showReceipt(t);
 };
 
@@ -427,7 +441,7 @@ async function renderSummary(){
    ${(dtFilter||tnFilter)?`<div style="margin-bottom:8px"><button class="btn sec sm" id="sClear">Reset filters</button></div>`:""}
    <p class="note">${visibleDays.length} day(s) recorded${tnFilter?` for tender <b>${esc(activeTenderName)}</b>`:""}. Corrections are netted into totals.</p>
    ${groups||`<p class="note">No transactions or shifts found for the selected filter.</p>`}</div>`;
-  $("#ssync").onclick=async()=>{await syncNow();toast("Summary is up to date.");renderSummary()};
+  $("#ssync").onclick=()=>askSync(renderSummary);
   $("#sd").onchange=e=>{el.dataset.d=e.target.value;renderSummary()};
   $("#stender").onchange=e=>{el.dataset.t=e.target.value;renderSummary()};
   if($("#sClear"))$("#sClear").onclick=()=>{el.dataset.d="";el.dataset.t="";renderSummary()};
@@ -459,7 +473,7 @@ async function renderLog(){
    <label for="lq">Search reference, customer, or tender name</label><input id="lq" type="search" autocomplete="off" value="${esc(raw)}" style="max-width:340px">
    <div class="chips" id="stTabs" style="margin:10px 0 6px">${[["ALL","All"],["OK","OK"],["Pending","Pending"],["Duplicate","Duplicate"]].map(([k,l])=>`<button type="button" data-st="${k}" class="${stFilter===k?"on":""}">${l} (${counts[k]})</button>`).join("")}</div>
    <p class="note">${txs.length} record(s) across ${days.size} day(s). Records cannot be edited or deleted.</p>${groups||'<p class="note">No transactions found.</p>'}</div>`;
-  $("#lsync").onclick=async()=>{await syncNow();toast("Log is up to date.");renderLog()};
+  $("#lsync").onclick=()=>askSync(renderLog);
   $("#lq").oninput=e=>{el.dataset.q=e.target.value;renderLog().then(()=>{const i=$("#lq");i.focus();i.setSelectionRange(99,99)})};
   $("#stTabs").onclick=e=>{const st=e.target.dataset.st;if(st){el.dataset.st=st;renderLog()}};
   el.onclick=e=>{const id=e.target.dataset.view;if(id)viewTx(txs.find(x=>x.id===id))};
@@ -467,6 +481,7 @@ async function renderLog(){
 function viewTx(t){
   const rows=[["Reference",t.ref],["Timestamp",stamp(t.ts)],["Customer",t.name||"—"],["Address",t.addr||"—"],["Phone",t.phone],["Type",t.kind==="correction"?"Correction ("+t.type+")":t.type],["Amount",peso(t.amount)],["Service charge",peso(t.fee)],["Status",t.status],["Tender",t.tender||"—"]];
   if(t.statusHistory&&t.statusHistory.length>1)rows.push(["Status history",t.statusHistory.map(s=>s.status+" ("+stamp(s.ts)+")").join(" → ")]);
+  if(t.dupOverride)rows.push(["Duplicate check","Matched an earlier receipt; tender confirmed it was a different one"]);
   if(t.note)rows.push(["Correction note",t.note]);
   const body=`<h2 style="font-size:1.5rem">SariSafe Transaction</h2>${rows.map(([k,v])=>`<p class="dl"><b>${k}:</b> ${esc(v)}</p>`).join("")}${t.sig?`<h3>Customer Signature</h3><img src="${t.sig}" alt="Signature" class="bigsig">`:""}`;
   $("#printArea").innerHTML=body;
@@ -609,36 +624,38 @@ const TBL={transactions:"sarisafe_transactions",shifts:"sarisafe_shifts"};
    NEVER put the email, password, or a service_role / secret key in this file. */
 const SUPABASE_URL="https://lcfdxountexmtmnhuynw.supabase.co";
 const SUPABASE_KEY="sb_publishable_QJtZjV-w2YgPZPN7LryR7g_KvhB6ZRb";
-const cloudCfg=async()=>(await getSet("cloud"))||null;
-function setCloud(s){const c=$("#cloudChip"),m={ok:"☁ Synced",syncing:"☁ Syncing…",offline:"☁ Offline – will sync later",error:"☁ Sync error"};if(s==="off"){c.hidden=true;return}c.hidden=false;c.textContent=m[s];c.title=S.err||""}
+/* Cloud sync is MANUAL. Nothing syncs in the background. The owner types the store email and password,
+   the app signs in, syncs once, then signs out. No password or session is saved on the device. */
+function setCloud(s){const c=$("#cloudChip"),t=S.lastSync?new Date(S.lastSync).toLocaleTimeString("en-PH",{hour:"numeric",minute:"2-digit"}):"",m={syncing:"☁ Syncing…",ok:"☁ Last sync "+t,error:"☁ Sync failed"};if(!m[s]){c.hidden=true;return}c.hidden=false;c.textContent=m[s];c.title=S.err||""}
 async function apiErr(r){let t="";try{const j=await r.clone().json();t=j.message||j.msg||j.error_description||j.error||""}catch{}return r.status+" "+t}
-async function sbToken(cfg,body,grant){
-  const r=await fetch(`${cfg.url}/auth/v1/token?grant_type=${grant}`,{method:"POST",headers:{apikey:cfg.key,"Content-Type":"application/json"},body:JSON.stringify(body)});
+async function sbLogin(email,password){
+  const r=await fetch(`${SUPABASE_URL}/auth/v1/token?grant_type=password`,{method:"POST",headers:{apikey:SUPABASE_KEY,"Content-Type":"application/json"},body:JSON.stringify({email,password})});
   if(!r.ok)throw new Error("Login failed: "+await apiErr(r));
-  const j=await r.json();cfg.access=j.access_token;cfg.refresh=j.refresh_token;cfg.exp=Date.now()+(j.expires_in-60)*1000;delete cfg.password;await setSet("cloud",cfg);return cfg}
-const sb=(cfg,path,o={})=>fetch(cfg.url+"/rest/v1/"+path,{...o,headers:{apikey:cfg.key,Authorization:"Bearer "+cfg.access,"Content-Type":"application/json",...(o.headers||{})}});
+  return (await r.json()).access_token}
+const sb=(token,path,o={})=>fetch(SUPABASE_URL+"/rest/v1/"+path,{...o,headers:{apikey:SUPABASE_KEY,Authorization:"Bearer "+token,"Content-Type":"application/json",...(o.headers||{})}});
 const getRec=(n,id)=>rq(store(n).get(id));
-let syncing=false,again=false,kickT;
-function kick(){if(syncing){again=true;return}clearTimeout(kickT);kickT=setTimeout(syncNow,1500)}
-async function syncNow(){
-  if(syncing)return;const cfg=await cloudCfg();if(!cfg||!cfg.refresh){setCloud("off");return}
-  if(!navigator.onLine){setCloud("offline");return}
-  syncing=true;setCloud("syncing");let changed=false;
+let syncing=false;
+async function runSync(email,password){
+  if(syncing)throw new Error("A sync is already running.");
+  if(!navigator.onLine)throw new Error("No internet connection. Try again when you are online.");
+  syncing=true;setCloud("syncing");let token=null,changed=false;
   try{
-    if(!cfg.access||Date.now()>cfg.exp)await sbToken(cfg,{refresh_token:cfg.refresh},"refresh_token");
+    token=await sbLogin(email,password);
     for(const [n,tbl] of Object.entries(TBL)){
+      /* 1) upload records created or changed on this device */
       const dirty=(await all(n)).filter(x=>x.dirty!==false);
       for(let i=0;i<dirty.length;i+=20){
         const ch=dirty.slice(i,i+20);
         const rows=ch.map(x=>{const{dirty:_d,srv:_s,...d}=x;return{id:x.id,ts:x.ts||x.startedAt,data:d}});
-        const r=await sb(cfg,tbl,{method:"POST",headers:{Prefer:"resolution=merge-duplicates,return=minimal"},body:JSON.stringify(rows)});
+        const r=await sb(token,tbl,{method:"POST",headers:{Prefer:"resolution=merge-duplicates,return=minimal"},body:JSON.stringify(rows)});
         if(!r.ok)throw new Error("Upload failed: "+await apiErr(r));
         for(const x of ch){x.dirty=false;await putRaw(n,x)}
       }
+      /* 2) download records from other devices */
       let lp=await getSet("pull_"+n),first=true;
       for(;;){
         const since=first&&lp?new Date(Date.parse(lp)-60000).toISOString():(lp||"1970-01-01T00:00:00Z");first=false;
-        const r=await sb(cfg,`${tbl}?select=id,data,updated_at&updated_at=gt.${encodeURIComponent(since)}&order=updated_at.asc&limit=200`);
+        const r=await sb(token,`${tbl}?select=id,data,updated_at&updated_at=gt.${encodeURIComponent(since)}&order=updated_at.asc&limit=200`);
         if(!r.ok)throw new Error("Download failed: "+await apiErr(r));
         const rows=await r.json();
         for(const row of rows){
@@ -650,29 +667,33 @@ async function syncNow(){
       }
       if(lp)await setSet("pull_"+n,lp);
     }
-    S.lastSync=new Date().toISOString();S.err="";setCloud("ok");
-    if(changed){await refreshShift();if(["counter","summary","log"].includes(S.tab))show(S.tab)}
-  }catch(e){S.err=e instanceof TypeError?"Cannot reach Supabase (network or wrong URL).":(e.message||String(e));setCloud(e instanceof TypeError||!navigator.onLine?"offline":"error")}
-  finally{syncing=false;if(again){again=false;kick()}}
+    S.lastSync=new Date().toISOString();S.err="";await setSet("lastSync",S.lastSync);setCloud("ok");
+    if(changed)await refreshShift();
+  }catch(e){S.err=e instanceof TypeError?"Cannot reach Supabase (check your internet).":(e.message||String(e));setCloud("error");throw new Error(S.err)}
+  finally{syncing=false;if(token)fetch(`${SUPABASE_URL}/auth/v1/logout?scope=local`,{method:"POST",headers:{apikey:SUPABASE_KEY,Authorization:"Bearer "+token}}).catch(()=>{})}
+}
+function askSync(after){
+  const d=modal(`<h3>Sync with cloud</h3><p class="note">Owner only. Enter the store account to upload this device's records and download the other devices' records. Nothing is saved on this device afterward.</p>
+   <label for="se">Store account email</label><input id="se" type="email" autocomplete="off">
+   <label for="sp">Password</label><input id="sp" type="password" autocomplete="off">
+   <p id="sErr" class="note" style="color:var(--red)"></p>
+   <div class="btns"><button class="btn" id="sGo">Sync</button><button class="btn sec" id="sNo">Cancel</button></div>`);
+  d.querySelector("#sNo").onclick=closeModal;
+  const go=async()=>{
+    const e=d.querySelector("#se").value.trim(),p=d.querySelector("#sp").value,b=d.querySelector("#sGo"),er=d.querySelector("#sErr");
+    if(!e||!p){er.textContent="Enter the email and password.";return}
+    er.textContent="";b.disabled=true;b.textContent="Syncing…";
+    try{await runSync(e,p);d.querySelector("#sp").value="";closeModal();toast("Sync finished.");if(after)after()}
+    catch(err){er.textContent=err.message;b.disabled=false;b.textContent="Sync"}
+  };
+  d.querySelector("#sGo").onclick=go;d.querySelector("#sp").onkeydown=ev=>{if(ev.key==="Enter")go()};
 }
 async function renderCloudCard(){
-  const c=await cloudCfg()||{},on=!!c.refresh,el=document.createElement("div");el.className="card";
-  el.innerHTML=`<h2>Cloud sync – see transactions from other devices</h2>`+(on?
-   `<p class="note">Connected as ${esc(c.email)}.${S.lastSync?" Last sync "+fmt(S.lastSync):""}</p>${S.err?`<p class="note" style="color:var(--red)"><b>Last error:</b> ${esc(S.err)}</p>`:""}<div class="btns"><button class="btn" id="cSync">Sync now</button><button class="btn red" id="cOff">Disconnect this device</button></div>`
-  :`<p class="note">Records upload to the store's cloud database when there is internet. The counter still works offline. Just enter the store account's email and password.</p>
-   <div class="row"><div><label for="ce">Store account email</label><input id="ce" type="email" value="${esc(c.email||"")}"></div><div><label for="cp">Store account password</label><input id="cp" type="password"></div></div>
-   <div class="btns"><button class="btn" id="cOn">Connect</button></div><p id="cErr" class="note" style="color:var(--red)"></p>`);
-  $("#v-backup").appendChild(el);
-  if(on){
-    $("#cSync").onclick=async()=>{await syncNow();toast("Sync finished.");renderBackup()};
-    $("#cOff").onclick=async()=>{if(!confirm("Disconnect this device from the cloud? Records on this device stay."))return;
-      await setSet("cloud",null);await setSet("pull_transactions",null);await setSet("pull_shifts",null);setCloud("off");renderBackup()};
-  }else $("#cOn").onclick=async()=>{
-    const cfg={url:SUPABASE_URL,key:SUPABASE_KEY,email:$("#ce").value.trim()},pw=$("#cp").value;
-    if(!cfg.email||!pw){toast("Enter the store account email and password.");return}
-    try{await sbToken(cfg,{email:cfg.email,password:pw},"password");toast("Connected. Syncing…");await syncNow();renderBackup()}
-    catch(e){$("#cErr").textContent=(e instanceof TypeError?"Cannot reach Supabase. Check the Project URL and your internet. ":"")+(e.message||"");toast("Could not connect.")}
-  };
+  const last=await getSet("lastSync"),el=document.createElement("div");el.className="card";
+  el.innerHTML=`<h2>Cloud sync – see transactions from other devices</h2>
+   <p class="note">Syncing is manual. Nothing uploads in the background and no login is saved on this device. Press the button, type the store account's email and password, and this device uploads its records and downloads the other devices' records.</p>
+   <p class="note">${last?"Last sync: "+fmt(last):"This device has never synced."}</p><div class="btns"><button class="btn" id="cSync">Sync with cloud</button></div>`;
+  $("#v-backup").appendChild(el);$("#cSync").onclick=()=>askSync(renderBackup);
 }
 
 /* ---------- install app prompt ---------- */
@@ -688,8 +709,7 @@ if("serviceWorker" in navigator&&location.protocol.startsWith("http"))navigator.
   if(!(await getSet("pin"))){await setSet("pin",await hashPin("1234"));await setSet("pinDefault",true)}
   S.deviceId=await getSet("deviceId");if(!S.deviceId){S.deviceId=uid();await setSet("deviceId",S.deviceId)}
   await loadTiers();await refreshShift();syncStatusByType();show("counter");
-  syncNow();setInterval(syncNow,45000);
-  addEventListener("online",syncNow);addEventListener("offline",async()=>{if(await cloudCfg())setCloud("offline")});
+  await setSet("cloud",null);S.lastSync=await getSet("lastSync");setCloud("off"); /* forget any login saved by older versions */
 })();
 </script>
 </body>
