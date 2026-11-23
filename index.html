@@ -8,15 +8,20 @@
 <link rel="icon" href="icon.svg" type="image/svg+xml">
 <meta name="theme-color" content="#007cff">
 <!--
-  SariSafe (CSC 106) – vanilla HTML/CSS/JS, no external requests (NFR-04, NFR-06).
-  Storage: IndexedDB "SariSafeDB" (FR-04, NFR-05). Requirement IDs refer to LW4 catalog.
+  SariSafe (CSC 106) – vanilla HTML/CSS/JS, offline-first PWA.
+  Storage: IndexedDB "SariSafeDB" (FR-04, NFR-05).
 -->
 <link rel="stylesheet" href="styles.css">
 </head>
 <body>
 <header>
   <h1>SariSafe <span class="note" style="color:#c9d3ea">Fuentez Store</span><span class="badge" id="roleBadge">Store Tender</span></h1>
-  <span class="chip" id="cloudChip" hidden></span><button class="btn sec sm" id="installBtn" hidden>📲 Install App</button><button class="btn sec sm" id="ownerBtn">Owner login</button>
+  <div class="hbtns">
+    <span class="chip" id="cloudChip" hidden></span>
+    <button class="btn sec sm" id="privacyTopBtn" type="button">🔒 Privacy</button>
+    <button class="btn sec sm" id="installBtn" hidden>📲 Install App</button>
+    <button class="btn sec sm" id="ownerBtn">Owner login</button>
+  </div>
 </header>
 <nav id="nav"></nav>
 <main>
@@ -59,7 +64,7 @@
     </div>
     <label style="display:flex;gap:8px;align-items:flex-start;margin-top:10px;font-weight:400;font-size:.9rem;cursor:pointer">
       <input type="checkbox" id="custAck" style="width:auto;margin-top:3px">
-      <span>I confirm that the mobile number and transaction amount I entered above are accurate. (Fuentez Store is not liable for customer input errors.)</span>
+      <span>I confirm that the mobile number and transaction amount I entered above are accurate, and I agree to the <a href="#privacy" id="privacyInlineLink" class="priv-link">Privacy Policy</a>. (Fuentez Store is not liable for customer input errors.)</span>
     </label>
     <div class="btns"><button class="btn" id="saveTx">Save transaction</button><button class="btn sec" id="resetTx">Clear form</button></div>
   </div>
@@ -84,8 +89,6 @@
 <script>
 "use strict";
 /* ---------- helpers ---------- */
-/* Reference digits the tender types: 5 = last 5 digits of the GCash reference, 13 = full reference.
-   Change this ONE number to switch. (5 can show "possible duplicates" more often; see README.) */
 const REF_DIGITS=5;
 const REF_HINT=REF_DIGITS>=13?"Enter the full 13-digit reference number.":`Enter the last ${REF_DIGITS} digits of the GCash reference number.`;
 const $=s=>document.querySelector(s);
@@ -106,11 +109,11 @@ let D;
 const rq=r=>new Promise((ok,no)=>{r.onsuccess=()=>ok(r.result);r.onerror=()=>no(r.error)});
 const store=(n,m="readonly")=>D.transaction(n,m).objectStore(n);
 const putRaw=(n,v)=>{if(n==="transactions")v.tail=String(v.ref||"").slice(-5);return rq(store(n,"readwrite").put(v))};
-const put=(n,v)=>putRaw(n,v);
+const put=(n,v)=>{if(n==="transactions"||n==="shifts")scheduleAutoSync();return putRaw(n,v)};
 const all=n=>rq(store(n).getAll());
 const byRef=r=>rq(store("transactions").index("ref").getAll(r));
 const getSet=async k=>(await rq(store("settings").get(k)))?.value;
-const setSet=(k,value)=>put("settings",{key:k,value});
+const setSet=(k,value)=>putRaw("settings",{key:k,value});
 function openDB(){return new Promise((ok,no)=>{
   if(!window.indexedDB)return no(new Error("IndexedDB unavailable"));
   const r=indexedDB.open("SariSafeDB",2);
@@ -121,9 +124,40 @@ function openDB(){return new Promise((ok,no)=>{
   r.onsuccess=()=>ok(r.result);r.onerror=()=>no(r.error)})}
 
 /* ---------- state ---------- */
-const S={role:"tender",tab:"counter",tiers:[],shift:null,manualFee:false,signed:false,alerted:"",dupOk:""};
+const S={role:"tender",tab:"counter",tiers:[],shift:null,manualFee:false,signed:false,alerted:"",dupOk:"",deviceAuth:null,ownerAuth:null};
 const DEFAULT_TIERS=Array.from({length:100},(_,i)=>({min:i*500+1,max:(i+1)*500,fee:(i+1)*10}));
 const TABS={tender:[["counter","Counter"],["shift","Shift"]],owner:[["counter","Counter"],["shift","Shift"],["summary","Summary"],["log","Log"],["settings","Fees"],["backup","Backup"]]};
+
+/* ---------- Privacy Policy Modal (RA 10173 / Data Confidentiality) ---------- */
+function showPrivacyPolicy(){
+  const d=modal(`<div class="detail priv-doc">
+    <h2 style="margin-top:0">🔒 SariSafe Privacy &amp; Data Confidentiality Policy</h2>
+    <p class="note">Fuentez Store · Brgy. Sumilihon, Butuan City<br>Aligned with the Philippine Data Privacy Act of 2012 (Republic Act No. 10173)</p>
+    <h3>1. Information We Collect</h3>
+    <p>When processing GCash Cash-In or Cash-Out requests, SariSafe records only the minimum information required for verification: the GCash reference number, transaction type, amount, service fee, customer full name, mobile number, optional address, and customer signature.</p>
+    <h3>2. Purpose of Collection</h3>
+    <p>Your information is collected strictly to:</p>
+    <ul>
+      <li>Verify GCash reference numbers and prevent duplicate or fraudulent claims.</li>
+      <li>Maintain accurate daily cash drawer and GCash wallet shift reconciliations.</li>
+      <li>Provide proof of transaction in case of customer inquiries or disputes.</li>
+    </ul>
+    <h3>3. Strict Confidentiality &amp; Access Control</h3>
+    <ul>
+      <li><b>Restricted Tender Access:</b> Store tenders can only record transactions and view their own active shift on the counter device. Tenders cannot view store-wide history, other shifts, or exported reports.</li>
+      <li><b>Owner-Only Oversight:</b> Full transaction logs, customer contact details, signatures, and backups are restricted exclusively to the authorized Store Owner.</li>
+      <li><b>No Third-Party Sharing:</b> Customer information is never sold, rented, or disclosed to external parties, except when required by law or official GCash dispute resolution.</li>
+    </ul>
+    <h3>4. Security &amp; Retention</h3>
+    <p>All records are transmitted over encrypted HTTPS connections and protected by database Row-Level Security (RLS). Financial entries and signatures are immutable once recorded to prevent unauthorized alteration.</p>
+    <h3>5. Customer Rights</h3>
+    <p>You may request to review or clarify your recorded transaction details at Fuentez Store by presenting your GCash reference number to the Store Owner.</p>
+    <div class="btns"><button class="btn" id="privClose">I understand</button></div>
+  </div>`,"view");
+  d.querySelector("#privClose").onclick=closeModal;
+}
+$("#privacyTopBtn").onclick=showPrivacyPolicy;
+$("#privacyInlineLink").onclick=e=>{e.preventDefault();showPrivacyPolicy()};
 
 /* ---------- fee tiers & balances (FR-09, FR-11) ---------- */
 const calcFee=a=>{const t=S.tiers.find(x=>a>=x.min&&a<=x.max)||S.tiers.find((x,i)=>i>0&&a>S.tiers[i-1].max&&a<x.min);return t?t.fee:null};
@@ -152,15 +186,27 @@ function nav(){
 function show(tab){
   if(S.role!=="owner"&&!["counter","shift"].includes(tab))tab="counter";
   S.tab=tab;document.querySelectorAll("main>section").forEach(s=>s.hidden=s.id!=="v-"+tab);nav();
+  if(S.role==="owner"&&S.ownerAuth&&["summary","log"].includes(tab))scheduleAutoSync(50);
   ({counter:renderRecent,shift:renderShift,summary:renderSummary,log:renderLog,settings:renderSettings,backup:renderBackup})[tab]();
 }
 $("#nav").onclick=e=>{const b=e.target.closest("button[data-tab]");if(b)show(b.dataset.tab)};
 $("#ownerBtn").onclick=()=>{
-  if(S.role==="owner"){S.role="tender";show("counter");return}
+  if(S.role==="owner"){
+    if(S.ownerAuth?.access_token){
+      fetch(`${SUPABASE_URL}/auth/v1/logout?scope=local`,{method:"POST",headers:{apikey:SUPABASE_KEY,Authorization:"Bearer "+S.ownerAuth.access_token}}).catch(()=>{});
+    }
+    S.ownerAuth=null;
+    S.role="tender";
+    updateCloudBadge();
+    show("counter");
+    banners();
+    toast("Owner view locked.");
+    return;
+  }
   let pin="";
   const d=modal(`<div class="pinbox"><div class="lock">🔒</div><h3>Store Owner</h3><p class="note">Enter your 4-digit PIN</p>
    <div class="dots" id="dots"><i></i><i></i><i></i><i></i></div><p id="pinErr" class="pinErr" aria-live="polite"></p>
-   <div class="pad">${[1,2,3,4,5,6,7,8,9].map(n=>`<button type="button" data-k="${n}">${n}</button>`).join("")}<button type="button" class="x" data-k="cancel">Cancel</button><button type="button" data-k="0">0</button><button type="button" class="x" data-k="back" aria-label="Delete">⌫</button></div></div>`,"pin");
+   <div class="pad">${[1,2,3,4,5,6,7,8,9].map(n=>`<button type="button" data-k="${n}">${n}</button>`).join("")}<button type="button" class="x" data-k="cancel">Cancel</button><button type="button" class="x" data-k="0">0</button><button type="button" class="x" data-k="back" aria-label="Delete">⌫</button></div></div>`,"pin");
   const paint=()=>d.querySelectorAll("#dots i").forEach((x,i)=>x.classList.toggle("on",i<pin.length));
   const press=async k=>{
     if(k==="cancel"){closeModal();return}
@@ -180,6 +226,7 @@ async function banners(){
   if(!S.shift)h+=`<div class="warn">No shift is open on this device. <a href="#shift" id="goShift" style="font-weight:700;text-decoration:underline;color:inherit">Open the Shift tab to enter your Tender name and start a shift</a> before recording transactions.</div>`;
   if(S.role==="owner"){
     if(await getSet("pinDefault"))h+=`<div class="warn">You are still using the default PIN (1234). Change it under Fees → Change owner PIN.</div>`;
+    if(!S.deviceAuth)h+=`<div class="warn">Tender auto-sync is not linked on this device yet. Connect a Staff sync account under <b>Backup → Tender Device Auto-Sync</b> so tender entries upload automatically.</div>`;
     const e=await storageInfo();if(e&&e.pct>=80)h+=`<div class="warn">Browser storage is ${e.pct.toFixed(0)}% full. Export a backup now (Backup tab).</div>`;
   }
   $("#banners").innerHTML=h;
@@ -230,7 +277,7 @@ $("#ref").maxLength=REF_DIGITS;$("#ref").placeholder="0".repeat(REF_DIGITS);
 document.querySelector('label[for="ref"]').textContent=`GCash reference number (${REF_DIGITS>=13?"13 digits":"last "+REF_DIGITS+" digits"})`;
 indicate("");
 
-/* ---------- transaction type status rule (Cash-In = OK only, Cash-Out = Pending first) ---------- */
+/* ---------- transaction type status rule ---------- */
 function syncStatusByType(){
   const txType=document.querySelector("input[name=type]:checked")?.value||"Cash-In";
   const st=$("#status"),sn=$("#statusNote");
@@ -277,7 +324,7 @@ $("#saveTx").onclick=async()=>{
     :!(fee>=0)?"Enter a valid service fee."
     :!/^09\d{9}$/.test(phone)?"Phone number must be 11 digits starting with 09."
     :!S.signed?"Customer signature is required."
-    :!$("#custAck").checked?"Please confirm that the mobile number and amount are accurate."
+    :!$("#custAck").checked?"Please confirm accuracy and agree to the Privacy Policy."
     :null;
   if(err){toast(err);return}
   const hits=await findDup(ref);
@@ -323,7 +370,7 @@ async function renderRecent(){
   const fixed=new Set(txs.filter(t=>t.kind==="correction").map(t=>t.corrects));
   const todayStr=day(new Date().toISOString());
   const visible=txs.filter(t=>day(t.ts)===todayStr&&(S.shift?t.shiftId===S.shift.id:(!t.shiftId&&t.device===S.deviceId)));
-  const pend=txs.filter(t=>t.status==="Pending");
+  const pend=txs.filter(t=>t.status==="Pending"&&(S.role==="owner"||t.device===S.deviceId));
   $("#pendingBox").hidden=!pend.length;
   $("#pendCount").textContent=pend.length;
   $("#pendingList").innerHTML=pend.length?`<table><tr><th>Time</th><th>Reference</th><th>Type</th><th>Amount</th><th>Status</th><th></th></tr>`+pend.map(t=>txRowHtml(t,fixed)).join("")+`</table>`:"";
@@ -453,7 +500,7 @@ async function renderSummary(){
    ${(dtFilter||tnFilter)?`<div style="margin-bottom:8px"><button class="btn sec sm" id="sClear">Reset filters</button></div>`:""}
    <p class="note">${visibleDays.length} day(s) recorded${tnFilter?` for tender <b>${esc(activeTenderName)}</b>`:""}. Corrections are netted into totals.</p>
    ${groups||`<p class="note">No transactions or shifts found for the selected filter.</p>`}</div>`;
-  $("#ssync").onclick=()=>askSync(renderSummary);
+  $("#ssync").onclick=()=>triggerOwnerSync(renderSummary);
   $("#sd").onchange=e=>{el.dataset.d=e.target.value;renderSummary()};
   $("#stender").onchange=e=>{el.dataset.t=e.target.value;renderSummary()};
   if($("#sClear"))$("#sClear").onclick=()=>{el.dataset.d="";el.dataset.t="";renderSummary()};
@@ -485,7 +532,7 @@ async function renderLog(){
    <label for="lq">Search reference, customer, or tender name</label><input id="lq" type="search" autocomplete="off" value="${esc(raw)}" style="max-width:340px">
    <div class="chips" id="stTabs" style="margin:10px 0 6px">${[["ALL","All"],["OK","OK"],["Pending","Pending"],["Duplicate","Duplicate"]].map(([k,l])=>`<button type="button" data-st="${k}" class="${stFilter===k?"on":""}">${l} (${counts[k]})</button>`).join("")}</div>
    <p class="note">${txs.length} record(s) across ${days.size} day(s). Records cannot be edited or deleted.</p>${groups||'<p class="note">No transactions found.</p>'}</div>`;
-  $("#lsync").onclick=()=>askSync(renderLog);
+  $("#lsync").onclick=()=>triggerOwnerSync(renderLog);
   $("#lq").oninput=e=>{
     const pos=e.target.selectionStart??e.target.value.length;
     el.dataset.q=e.target.value;
@@ -644,92 +691,216 @@ function showReceipt(t){
   d.querySelector("#rPrint").onclick=()=>window.print();
 }
 
-/* ---------- cloud sync (optional, Supabase REST; app still works fully offline) ---------- */
+/* ---------- automatic cloud sync (role-isolated: staff upload-only, owner full sync) ---------- */
 const TBL={transactions:"sarisafe_transactions",shifts:"sarisafe_shifts"};
-/* Fixed Supabase project. The URL and publishable key are public by design.
-   NEVER put the email, password, or a service_role / secret key in this file. */
 const SUPABASE_URL="https://lcfdxountexmtmnhuynw.supabase.co";
 const SUPABASE_KEY="sb_publishable_QJtZjV-w2YgPZPN7LryR7g_KvhB6ZRb";
-/* Cloud sync is MANUAL. Nothing syncs in the background. The owner types the store email and password,
-   the app signs in, syncs once, then signs out. No password or session is saved on the device. */
-function setCloud(s){const c=$("#cloudChip"),t=S.lastSync?new Date(S.lastSync).toLocaleTimeString("en-PH",{hour:"numeric",minute:"2-digit"}):"",m={syncing:"☁ Syncing…",ok:"☁ Last sync "+t,error:"☁ Sync failed"};if(!m[s]){c.hidden=true;return}c.hidden=false;c.textContent=m[s];c.title=S.err||""}
+const getRec=(n,id)=>rq(store(n).get(id));
+
+function updateCloudBadge(state="idle"){
+  const c=$("#cloudChip");
+  const active=(S.role==="owner"&&S.ownerAuth)||S.deviceAuth;
+  if(!active&&state==="idle"){c.hidden=true;return}
+  c.hidden=false;
+  const t=S.lastSync?new Date(S.lastSync).toLocaleTimeString("en-PH",{hour:"numeric",minute:"2-digit"}):"";
+  if(state==="syncing"){c.textContent="☁ Auto-syncing…";c.title="";return}
+  if(state==="error"){c.textContent="☁ Sync error";c.title=S.err||"";return}
+  if(!navigator.onLine){c.textContent="☁ Offline (queued)";c.title="Changes will auto-sync when online";return}
+  if(S.role==="owner"&&S.ownerAuth){
+    c.textContent=t?`☁ Owner synced ${t}`:"☁ Owner auto-sync";
+    c.title="Full store sync active while Owner view is unlocked";
+  }else if(S.deviceAuth){
+    c.textContent=t?`☁ Auto-synced ${t}`:"☁ Auto-sync ready";
+    c.title="Tender upload-only sync active";
+  }
+}
+
 async function apiErr(r){let t="";try{const j=await r.clone().json();t=j.message||j.msg||j.error_description||j.error||""}catch{}return r.status+" "+t}
-async function sbLogin(email,password){
+const sb=(token,path,o={})=>fetch(SUPABASE_URL+"/rest/v1/"+path,{...o,headers:{apikey:SUPABASE_KEY,Authorization:"Bearer "+token,"Content-Type":"application/json",...(o.headers||{})}});
+
+async function sbAuth(email,password){
   const r=await fetch(`${SUPABASE_URL}/auth/v1/token?grant_type=password`,{method:"POST",headers:{apikey:SUPABASE_KEY,"Content-Type":"application/json"},body:JSON.stringify({email,password})});
   if(!r.ok)throw new Error("Login failed: "+await apiErr(r));
-  return (await r.json()).access_token}
-const sb=(token,path,o={})=>fetch(SUPABASE_URL+"/rest/v1/"+path,{...o,headers:{apikey:SUPABASE_KEY,Authorization:"Bearer "+token,"Content-Type":"application/json",...(o.headers||{})}});
-const getRec=(n,id)=>rq(store(n).get(id));
-let syncing=false;
-async function runSync(email,password){
-  if(syncing)throw new Error("A sync is already running.");
-  if(!navigator.onLine)throw new Error("No internet connection. Try again when you are online.");
-  syncing=true;setCloud("syncing");let token=null,changed=false;
-  try{
-    token=await sbLogin(email,password);
-    for(const [n,tbl] of Object.entries(TBL)){
-      /* 1) download records from other devices first and resolve offline conflicts */
-      let lp=await getSet("pull_"+n),first=true;
-      for(;;){
-        const since=first&&lp?new Date(Date.parse(lp)-60000).toISOString():(lp||"1970-01-01T00:00:00Z");first=false;
-        const r=await sb(token,`${tbl}?select=id,data,updated_at&updated_at=gt.${encodeURIComponent(since)}&order=updated_at.asc&limit=200`);
-        if(!r.ok)throw new Error("Download failed: "+await apiErr(r));
-        const rows=await r.json();
-        for(const row of rows){
-          lp=row.updated_at;const cur=await getRec(n,row.id);
-          if(!cur){await putRaw(n,{...row.data,dirty:false,srv:row.updated_at});changed=true;continue}
-          if(cur.dirty===false){
-            if(cur.srv!==row.updated_at){await putRaw(n,{...row.data,dirty:false,srv:row.updated_at});changed=true}
-            continue;
-          }
-          if(n==="transactions"&&row.data.status==="OK"){
-            await putRaw(n,{...row.data,dirty:false,srv:row.updated_at});changed=true;
-          }else if(n==="shifts"&&row.data.endedAt){
-            await putRaw(n,{...row.data,dirty:false,srv:row.updated_at});changed=true;
-          }
-        }
-        if(rows.length<200)break;
-      }
-      if(lp)await setSet("pull_"+n,lp);
+  const j=await r.json();
+  const prof=await sbProfile(j.access_token,j.user.id);
+  return{access_token:j.access_token,refresh_token:j.refresh_token,expires_at:Date.now()+((j.expires_in||3600)-60)*1000,email:j.user.email,user_id:j.user.id,role:prof.role};
+}
 
-      /* 2) upload remaining records created or changed on this device */
+async function sbProfile(token,userId){
+  const r=await fetch(`${SUPABASE_URL}/rest/v1/sarisafe_profiles?select=role,store_id&user_id=eq.${encodeURIComponent(userId)}`,{headers:{apikey:SUPABASE_KEY,Authorization:"Bearer "+token}});
+  if(!r.ok)throw new Error("Profile check failed: "+await apiErr(r));
+  const rows=await r.json();
+  if(!rows.length)throw new Error("Account is not linked in sarisafe_profiles. Add this User UID to sarisafe_profiles in Supabase first.");
+  return rows[0];
+}
+
+async function ensureFreshSession(sess,persistDevice){
+  if(!sess)return null;
+  if(sess.access_token&&sess.expires_at>Date.now())return sess;
+  const r=await fetch(`${SUPABASE_URL}/auth/v1/token?grant_type=refresh_token`,{method:"POST",headers:{apikey:SUPABASE_KEY,"Content-Type":"application/json"},body:JSON.stringify({refresh_token:sess.refresh_token})});
+  if(!r.ok){
+    if(persistDevice){S.deviceAuth=null;await setSet("deviceAuth",null);banners()}
+    else{S.ownerAuth=null}
+    throw new Error("Cloud session expired. Please reconnect.");
+  }
+  const j=await r.json();
+  const updated={...sess,access_token:j.access_token,refresh_token:j.refresh_token,expires_at:Date.now()+((j.expires_in||3600)-60)*1000};
+  if(persistDevice){S.deviceAuth=updated;await setSet("deviceAuth",updated)}
+  else{S.ownerAuth=updated}
+  return updated;
+}
+
+let syncing=false,syncTimer=null;
+function scheduleAutoSync(delay=450){
+  clearTimeout(syncTimer);
+  syncTimer=setTimeout(()=>runAutoSync(true),delay);
+}
+
+async function runAutoSync(silent=false){
+  if(syncing)return;
+  const useOwner=S.role==="owner"&&Boolean(S.ownerAuth);
+  const baseSess=useOwner?S.ownerAuth:S.deviceAuth;
+  if(!baseSess){updateCloudBadge();return}
+  if(!navigator.onLine){updateCloudBadge();return}
+
+  syncing=true;updateCloudBadge("syncing");let changed=false;
+  try{
+    const sess=await ensureFreshSession(baseSess,!useOwner);
+    if(!sess)return;
+    const isOwner=sess.role==="owner"&&S.role==="owner";
+
+    for(const [n,tbl] of Object.entries(TBL)){
+      /* 1) ONLY Owner mode downloads records from all devices */
+      if(isOwner){
+        let lp=await getSet("pull_"+n),first=true;
+        for(;;){
+          const since=first&&lp?new Date(Date.parse(lp)-60000).toISOString():(lp||"1970-01-01T00:00:00Z");first=false;
+          const r=await sb(sess.access_token,`${tbl}?select=id,data,updated_at&updated_at=gt.${encodeURIComponent(since)}&order=updated_at.asc&limit=200`);
+          if(!r.ok)throw new Error("Download failed: "+await apiErr(r));
+          const rows=await r.json();
+          for(const row of rows){
+            lp=row.updated_at;const cur=await getRec(n,row.id);
+            if(!cur){await putRaw(n,{...row.data,dirty:false,srv:row.updated_at});changed=true;continue}
+            if(cur.dirty===false){
+              if(cur.srv!==row.updated_at){await putRaw(n,{...row.data,dirty:false,srv:row.updated_at});changed=true}
+              continue;
+            }
+            if(n==="transactions"&&row.data.status==="OK"){await putRaw(n,{...row.data,dirty:false,srv:row.updated_at});changed=true}
+            else if(n==="shifts"&&row.data.endedAt){await putRaw(n,{...row.data,dirty:false,srv:row.updated_at});changed=true}
+          }
+          if(rows.length<200)break;
+        }
+        if(lp)await setSet("pull_"+n,lp);
+      }
+
+      /* 2) Upload local dirty records (both Staff auto-sync and Owner sync) */
       const dirty=(await all(n)).filter(x=>x.dirty!==false);
       for(let i=0;i<dirty.length;i+=20){
         const ch=dirty.slice(i,i+20);
         const rows=ch.map(x=>{const{dirty:_d,srv:_s,...d}=x;return{id:x.id,ts:x.ts||x.startedAt,data:d}});
-        const r=await sb(token,tbl,{method:"POST",headers:{Prefer:"resolution=merge-duplicates,return=minimal"},body:JSON.stringify(rows)});
+        const r=await sb(sess.access_token,tbl,{method:"POST",headers:{Prefer:"resolution=merge-duplicates,return=minimal"},body:JSON.stringify(rows)});
         if(!r.ok)throw new Error("Upload failed: "+await apiErr(r));
         for(const x of ch){x.dirty=false;await putRaw(n,x)}
       }
     }
-    S.lastSync=new Date().toISOString();S.err="";await setSet("lastSync",S.lastSync);setCloud("ok");
-    if(changed)await refreshShift();
-  }catch(e){S.err=e instanceof TypeError?"Cannot reach Supabase (check your internet).":(e.message||String(e));setCloud("error");throw new Error(S.err)}
-  finally{syncing=false;if(token)fetch(`${SUPABASE_URL}/auth/v1/logout?scope=local`,{method:"POST",headers:{apikey:SUPABASE_KEY,Authorization:"Bearer "+token}}).catch(()=>{})}
+
+    S.lastSync=new Date().toISOString();S.err="";await setSet("lastSync",S.lastSync);
+    updateCloudBadge("idle");
+    if(changed){
+      await refreshShift();
+      if(S.tab==="summary")renderSummary();
+      else if(S.tab==="log")renderLog();
+    }
+  }catch(e){
+    S.err=e instanceof TypeError?"Cannot reach Supabase (check internet).":(e.message||String(e));
+    updateCloudBadge("error");
+    if(!silent)throw new Error(S.err);
+  }finally{
+    syncing=false;
+  }
 }
-function askSync(after){
-  const d=modal(`<h3>Sync with cloud</h3><p class="note">Owner only. Enter the store account to upload this device's records and download the other devices' records. Nothing is saved on this device afterward.</p>
-   <label for="se">Store account email</label><input id="se" type="email" autocomplete="off">
+
+function askConnectDeviceSync(){
+  const d=modal(`<h3>Connect Tender Device for Auto-Sync</h3>
+   <p class="note">Owner setup (one time per counter device). Sign in with a <b>Staff</b> Supabase account (<code>role = 'staff'</code>). Transactions recorded on this device will upload automatically in the background, while tenders remain blocked from viewing other devices' records.</p>
+   <label for="de">Staff sync email</label><input id="de" type="email" autocomplete="off" placeholder="tender@fuentezstore.com">
+   <label for="dp">Password</label><input id="dp" type="password" autocomplete="off">
+   <p id="dErr" class="note" style="color:var(--red)"></p>
+   <div class="btns"><button class="btn" id="dGo">Connect &amp; auto-sync</button><button class="btn sec" id="dNo">Cancel</button></div>`);
+  d.querySelector("#dNo").onclick=closeModal;
+  const go=async()=>{
+    const e=d.querySelector("#de").value.trim(),p=d.querySelector("#dp").value,b=d.querySelector("#dGo"),er=d.querySelector("#dErr");
+    if(!e||!p){er.textContent="Enter the Staff email and password.";return}
+    er.textContent="";b.disabled=true;b.textContent="Connecting…";
+    try{
+      const sess=await sbAuth(e,p);
+      if(sess.role!=="staff")throw new Error("Please use a 'staff' account here so tenders cannot download store-wide records. Use your 'owner' account under Owner Full Sync.");
+      S.deviceAuth=sess;await setSet("deviceAuth",sess);
+      d.querySelector("#dp").value="";closeModal();banners();
+      await runAutoSync(false);
+      toast("Tender auto-sync connected.");renderBackup();
+    }catch(err){er.textContent=err.message;b.disabled=false;b.textContent="Connect & auto-sync"}
+  };
+  d.querySelector("#dGo").onclick=go;d.querySelector("#dp").onkeydown=ev=>{if(ev.key==="Enter")go()};
+}
+
+function triggerOwnerSync(after){
+  if(S.ownerAuth){
+    runAutoSync(false).then(()=>{toast("Store records synced.");if(after)after()}).catch(err=>{toast(err.message);askOwnerSync(after)});
+    return;
+  }
+  askOwnerSync(after);
+}
+
+function askOwnerSync(after){
+  const d=modal(`<h3>Owner Cloud Sync</h3>
+   <p class="note">Sign in with your <b>Owner</b> account (<code>role = 'owner'</code>) to download all transactions from every tender device. Your Owner cloud session clears automatically when you lock Owner view.</p>
+   <label for="se">Owner account email</label><input id="se" type="email" autocomplete="off">
    <label for="sp">Password</label><input id="sp" type="password" autocomplete="off">
    <p id="sErr" class="note" style="color:var(--red)"></p>
-   <div class="btns"><button class="btn" id="sGo">Sync</button><button class="btn sec" id="sNo">Cancel</button></div>`);
+   <div class="btns"><button class="btn" id="sGo">Sync all devices</button><button class="btn sec" id="sNo">Cancel</button></div>`);
   d.querySelector("#sNo").onclick=closeModal;
   const go=async()=>{
     const e=d.querySelector("#se").value.trim(),p=d.querySelector("#sp").value,b=d.querySelector("#sGo"),er=d.querySelector("#sErr");
     if(!e||!p){er.textContent="Enter the email and password.";return}
     er.textContent="";b.disabled=true;b.textContent="Syncing…";
-    try{await runSync(e,p);d.querySelector("#sp").value="";closeModal();toast("Sync finished.");if(after)after()}
-    catch(err){er.textContent=err.message;b.disabled=false;b.textContent="Sync"}
+    try{
+      const sess=await sbAuth(e,p);
+      if(sess.role!=="owner")throw new Error("This account has role 'staff' and cannot download all store records. Sign in with an 'owner' account.");
+      S.ownerAuth=sess;
+      await runAutoSync(false);
+      d.querySelector("#sp").value="";closeModal();toast("All store records synced.");if(after)after();
+    }catch(err){er.textContent=err.message;b.disabled=false;b.textContent="Sync all devices"}
   };
   d.querySelector("#sGo").onclick=go;d.querySelector("#sp").onkeydown=ev=>{if(ev.key==="Enter")go()};
 }
+
 async function renderCloudCard(){
   const last=await getSet("lastSync"),el=document.createElement("div");el.className="card";
-  el.innerHTML=`<h2>Cloud sync – see transactions from other devices</h2>
-   <p class="note">Syncing is manual. Nothing uploads in the background and no login is saved on this device. Press the button, type the store account's email and password, and this device uploads its records and downloads the other devices' records.</p>
-   <p class="note">${last?"Last sync: "+fmt(last):"This device has never synced."}</p><div class="btns"><button class="btn" id="cSync">Sync with cloud</button></div>`;
-  $("#v-backup").appendChild(el);$("#cSync").onclick=()=>askSync(renderBackup);
+  el.innerHTML=`<h2>Cloud Sync &amp; Role Access</h2>
+   <div class="sync-box">
+     <p style="margin:0 0 4px"><b>1. Tender Device Auto-Sync (Upload-Only):</b> ${S.deviceAuth?`<span class="st OK">Connected (${esc(S.deviceAuth.email)})</span>`:`<span class="st Pending">Not connected</span>`}</p>
+     <p class="note" style="margin:0 0 8px">Automatically uploads new transactions and shift updates from this device in the background. Tenders cannot view other devices' records.</p>
+     <div class="btns" style="margin:0 0 14px">
+       <button class="btn sec sm" id="cDevConnect">${S.deviceAuth?"Switch Staff account":"Connect device for auto-sync"}</button>
+       ${S.deviceAuth?`<button class="btn red sm" id="cDevDisconnect">Disconnect device</button>`:""}
+     </div>
+     <hr style="border:0;border-top:1px solid var(--line);margin:12px 0">
+     <p style="margin:0 0 4px"><b>2. Owner Full Store Sync:</b> ${S.ownerAuth?`<span class="st OK">Active (${esc(S.ownerAuth.email)})</span>`:`<span class="note">Locked until Owner signs in</span>`}</p>
+     <p class="note" style="margin:0 0 8px">${last?"Last sync: "+fmt(last):"Never synced."} Downloads all transactions across every tender device. Clears automatically when you tap <b>Lock owner view</b>.</p>
+     <div class="btns" style="margin:0"><button class="btn" id="cSync">Sync all store records now</button></div>
+   </div>`;
+  $("#v-backup").appendChild(el);
+  $("#cDevConnect").onclick=askConnectDeviceSync;
+  if($("#cDevDisconnect"))$("#cDevDisconnect").onclick=async()=>{
+    if(S.deviceAuth?.access_token)fetch(`${SUPABASE_URL}/auth/v1/logout?scope=local`,{method:"POST",headers:{apikey:SUPABASE_KEY,Authorization:"Bearer "+S.deviceAuth.access_token}}).catch(()=>{});
+    S.deviceAuth=null;await setSet("deviceAuth",null);updateCloudBadge();banners();renderBackup();toast("Device auto-sync disconnected.");
+  };
+  $("#cSync").onclick=()=>triggerOwnerSync(renderBackup);
 }
+
+window.addEventListener("online",()=>{updateCloudBadge();scheduleAutoSync(300)});
+window.addEventListener("offline",()=>updateCloudBadge());
 
 /* ---------- install app prompt ---------- */
 let installPrompt;
@@ -743,8 +914,13 @@ if("serviceWorker" in navigator&&location.protocol.startsWith("http"))navigator.
     document.querySelector("main").innerHTML=`<div class="card"><h2>Storage is unavailable</h2><p>This browser has blocked IndexedDB (for example, in private browsing). Enable site storage or use a normal browser window, then reload.</p></div>`;return}
   if(!(await getSet("pin"))){await setSet("pin",await hashPin("1234"));await setSet("pinDefault",true)}
   S.deviceId=await getSet("deviceId");if(!S.deviceId){S.deviceId=uid();await setSet("deviceId",S.deviceId)}
+  const savedDev=await getSet("deviceAuth");
+  if(savedDev&&savedDev.role==="staff")S.deviceAuth=savedDev;
+  else if(savedDev)await setSet("deviceAuth",null);
+  S.lastSync=await getSet("lastSync");
   await loadTiers();await refreshShift();syncStatusByType();show("counter");
-  await setSet("cloud",null);S.lastSync=await getSet("lastSync");setCloud("off"); /* forget any login saved by older versions */
+  updateCloudBadge();
+  if(S.deviceAuth)scheduleAutoSync(600);
 })();
 </script>
 </body>
