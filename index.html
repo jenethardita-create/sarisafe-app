@@ -17,7 +17,7 @@
 <header>
   <h1>SariSafe <span class="note" style="color:#c9d3ea">Fuentez Store</span><span class="badge" id="roleBadge">Store Tender</span></h1>
   <div class="hbtns">
-    <button class="btn sec sm" id="cloudChip" type="button">☁ Connect sync</button>
+    <button class="btn sec sm" id="cloudChip" type="button">☁ Auto-sync ready</button>
     <button class="btn sec sm" id="privacyTopBtn" type="button">🔒 Privacy</button>
     <button class="btn sec sm" id="installBtn" hidden>📲 Install App</button>
     <button class="btn sec sm" id="ownerBtn">Owner login</button>
@@ -124,7 +124,7 @@ function openDB(){return new Promise((ok,no)=>{
   r.onsuccess=()=>ok(r.result);r.onerror=()=>no(r.error)})}
 
 /* ---------- state ---------- */
-const S={role:"tender",tab:"counter",tiers:[],shift:null,manualFee:false,signed:false,alerted:"",dupOk:"",deviceAuth:null,ownerAuth:null,offlineConfirmed:false};
+const S={role:"tender",tab:"counter",tiers:[],shift:null,manualFee:false,signed:false,alerted:"",dupOk:"",ownerAuth:null};
 const DEFAULT_TIERS=Array.from({length:100},(_,i)=>({min:i*500+1,max:(i+1)*500,fee:(i+1)*10}));
 const TABS={tender:[["counter","Counter"],["shift","Shift"]],owner:[["counter","Counter"],["shift","Shift"],["summary","Summary"],["log","Log"],["settings","Fees"],["backup","Backup"]]};
 
@@ -213,7 +213,7 @@ $("#ownerBtn").onclick=()=>{
     if(k==="back")pin=pin.slice(0,-1);else if(/^\d$/.test(k)&&pin.length<4)pin+=k;
     $("#pinErr").textContent="";paint();
     if(pin.length<4)return;
-    if(await hashPin(pin)===await getSet("pin")){closeModal();S.role="owner";show("summary");banners()}
+    if(await hashPin(pin)===await getSet("pin")){closeModal();S.role="owner";updateCloudBadge();show("summary");banners()}
     else{const dots=$("#dots");$("#pinErr").textContent="Invalid PIN. Try again.";dots.classList.remove("bad");void dots.offsetWidth;dots.classList.add("bad");pin="";setTimeout(()=>{dots.classList.remove("bad");paint()},400)}
   };
   const key=e=>{if(e.key==="Backspace")press("back");else if(/^\d$/.test(e.key))press(e.key)};
@@ -223,16 +223,12 @@ $("#ownerBtn").onclick=()=>{
 };
 async function banners(){
   let h="";
-  if(!S.deviceAuth){
-    h+=`<div class="warn" style="border:2px solid #f59e0b;background:#fffbeb"><b>☁ Step 1 – Connect Cloud Sync First:</b> This device is not connected yet. <a href="#connect-sync" id="goSync" style="font-weight:700;text-decoration:underline;color:inherit">Tap here (or ☁ Connect sync at the top)</a> before recording transactions so entries upload automatically.</div>`;
-  }
   if(!S.shift)h+=`<div class="warn">No shift is open on this device. <a href="#shift" id="goShift" style="font-weight:700;text-decoration:underline;color:inherit">Open the Shift tab to enter your Tender name and start a shift</a> before recording transactions.</div>`;
   if(S.role==="owner"){
     if(await getSet("pinDefault"))h+=`<div class="warn">You are still using the default PIN (1234). Change it under Fees → Change owner PIN.</div>`;
     const e=await storageInfo();if(e&&e.pct>=80)h+=`<div class="warn">Browser storage is ${e.pct.toFixed(0)}% full. Export a backup now (Backup tab).</div>`;
   }
   $("#banners").innerHTML=h;
-  const gsync=$("#goSync");if(gsync)gsync.onclick=e=>{e.preventDefault();askConnectDeviceSync(false)};
   const gs=$("#goShift");if(gs)gs.onclick=e=>{e.preventDefault();show("shift")};
 }
 
@@ -332,14 +328,6 @@ $("#saveTx").onclick=async()=>{
   if(err){toast(err);return}
   const hits=await findDup(ref);
   if(hits.length&&status!=="Duplicate"&&S.dupOk!==ref){showDup(hits);return}
-  if(!S.deviceAuth&&S.role==="tender"&&navigator.onLine&&!S.offlineConfirmed){
-    const d=modal(`<h3>⚠ Connect Cloud Sync First</h3>
-     <p>Cloud sync is not connected yet. Connect now so this transaction uploads automatically to the Owner's dashboard.</p>
-     <div class="btns"><button class="btn" id="preSyncGo">Connect sync first</button><button class="btn sec" id="preSyncSkip">Save offline anyway</button></div>`,"alert");
-    d.querySelector("#preSyncGo").onclick=()=>{closeModal();askConnectDeviceSync(false)};
-    d.querySelector("#preSyncSkip").onclick=()=>{S.offlineConfirmed=true;closeModal();$("#saveTx").click()};
-    return;
-  }
   const t={id:uid(),ts:new Date().toISOString(),ref,type:txType,amount,fee,phone,status,name:$("#cname").value.trim(),addr:$("#addr").value.trim(),
     sig:cv.toDataURL("image/png"),shiftId:S.shift?.id||null,tender:S.shift?.tender||"",kind:"sale",dupOverride:hits.length>0&&status!=="Duplicate",device:S.deviceId,statusHistory:[{status,ts:new Date().toISOString()}]};
   await put("transactions",t);resetForm();renderRecent();showReceipt(t);
@@ -702,7 +690,7 @@ function showReceipt(t){
   d.querySelector("#rPrint").onclick=()=>window.print();
 }
 
-/* ---------- automatic cloud sync (role-isolated: staff upload-only, owner full sync) ---------- */
+/* ---------- automatic cloud sync (zero-login tender upload, owner-only full read) ---------- */
 const TBL={transactions:"sarisafe_transactions",shifts:"sarisafe_shifts"};
 const SUPABASE_URL="https://lcfdxountexmtmnhuynw.supabase.co";
 const SUPABASE_KEY="sb_publishable_QJtZjV-w2YgPZPN7LryR7g_KvhB6ZRb";
@@ -713,26 +701,33 @@ function updateCloudBadge(state="idle"){
   const t=S.lastSync?new Date(S.lastSync).toLocaleTimeString("en-PH",{hour:"numeric",minute:"2-digit"}):"";
   if(state==="syncing"){c.textContent="☁ Auto-syncing…";c.title="";return}
   if(state==="error"){c.textContent="☁ Sync error";c.title=S.err||"";return}
-  if(!navigator.onLine&&(S.deviceAuth||S.ownerAuth)){c.textContent="☁ Offline (queued)";c.title="Changes will auto-sync when online";return}
+  if(!navigator.onLine){c.textContent="☁ Offline (queued)";c.title="Changes will auto-sync when online";return}
   if(S.role==="owner"&&S.ownerAuth){
     c.textContent=t?`☁ Owner synced ${t}`:"☁ Owner auto-sync";
     c.title="Full store sync active while Owner view is unlocked";
-  }else if(S.deviceAuth){
-    c.textContent=t?`☁ Auto-synced ${t}`:"☁ Auto-sync ready";
-    c.title="Tender upload-only sync active";
+  }else if(S.role==="owner"){
+    c.textContent="☁ Sync all devices";
+    c.title="Tap to sign in as Owner and download all devices' records";
   }else{
-    c.textContent="☁ Connect sync";
-    c.title="Tap to connect tender auto-sync";
+    c.textContent=t?`☁ Auto-synced ${t}`:"☁ Auto-sync active";
+    c.title="Automatic upload-only sync active (no login needed)";
   }
 }
 $("#cloudChip").onclick=()=>{
   if(S.role==="owner"){triggerOwnerSync();return}
-  if(!S.deviceAuth){askConnectDeviceSync(false);return}
   runAutoSync(false).then(()=>toast("Synced to cloud.")).catch(err=>toast(err.message));
 };
 
 async function apiErr(r){let t="";try{const j=await r.clone().json();t=j.message||j.msg||j.error_description||j.error||""}catch{}return r.status+" "+t}
-const sb=(token,path,o={})=>fetch(SUPABASE_URL+"/rest/v1/"+path,{...o,headers:{apikey:SUPABASE_KEY,Authorization:"Bearer "+token,"Content-Type":"application/json",...(o.headers||{})}});
+const sb=(token,path,o={})=>fetch(SUPABASE_URL+"/rest/v1/"+path,{
+  ...o,
+  headers:{
+    apikey:SUPABASE_KEY,
+    ...(token?{Authorization:"Bearer "+token}:{}),
+    "Content-Type":"application/json",
+    ...(o.headers||{})
+  }
+});
 
 async function sbAuth(email,password){
   const r=await fetch(`${SUPABASE_URL}/auth/v1/token?grant_type=password`,{method:"POST",headers:{apikey:SUPABASE_KEY,"Content-Type":"application/json"},body:JSON.stringify({email,password})});
@@ -750,44 +745,38 @@ async function sbProfile(token,userId){
   return rows[0];
 }
 
-async function ensureFreshSession(sess,persistDevice){
+async function ensureFreshSession(sess){
   if(!sess)return null;
   if(sess.access_token&&sess.expires_at>Date.now())return sess;
   const r=await fetch(`${SUPABASE_URL}/auth/v1/token?grant_type=refresh_token`,{method:"POST",headers:{apikey:SUPABASE_KEY,"Content-Type":"application/json"},body:JSON.stringify({refresh_token:sess.refresh_token})});
   if(!r.ok){
-    if(persistDevice){S.deviceAuth=null;await setSet("deviceAuth",null);banners()}
-    else{S.ownerAuth=null}
-    throw new Error("Cloud session expired. Please reconnect.");
+    S.ownerAuth=null;
+    throw new Error("Owner cloud session expired. Please sign in again.");
   }
   const j=await r.json();
-  const updated={...sess,access_token:j.access_token,refresh_token:j.refresh_token,expires_at:Date.now()+((j.expires_in||3600)-60)*1000};
-  if(persistDevice){S.deviceAuth=updated;await setSet("deviceAuth",updated)}
-  else{S.ownerAuth=updated}
-  return updated;
+  S.ownerAuth={...sess,access_token:j.access_token,refresh_token:j.refresh_token,expires_at:Date.now()+((j.expires_in||3600)-60)*1000};
+  return S.ownerAuth;
 }
 
 let syncing=false,syncTimer=null;
-function scheduleAutoSync(delay=450){
+function scheduleAutoSync(delay=400){
   clearTimeout(syncTimer);
   syncTimer=setTimeout(()=>runAutoSync(true),delay);
 }
 
 async function runAutoSync(silent=false){
   if(syncing)return;
-  const useOwner=S.role==="owner"&&Boolean(S.ownerAuth);
-  const baseSess=useOwner?S.ownerAuth:S.deviceAuth;
-  if(!baseSess){updateCloudBadge();return}
   if(!navigator.onLine){updateCloudBadge();return}
 
+  const isOwner=S.role==="owner"&&Boolean(S.ownerAuth);
   syncing=true;updateCloudBadge("syncing");let changed=false;
   try{
-    const sess=await ensureFreshSession(baseSess,!useOwner);
-    if(!sess)return;
-    const isOwner=sess.role==="owner"&&S.role==="owner";
+    if(isOwner){
+      /* OWNER MODE: Download all devices' records first, then upload local changes */
+      const sess=await ensureFreshSession(S.ownerAuth);
+      if(!sess||sess.role!=="owner")throw new Error("Owner session required.");
 
-    for(const [n,tbl] of Object.entries(TBL)){
-      /* 1) ONLY Owner mode downloads records from all devices */
-      if(isOwner){
+      for(const [n,tbl] of Object.entries(TBL)){
         let lp=await getSet("pull_"+n),first=true;
         for(;;){
           const since=first&&lp?new Date(Date.parse(lp)-60000).toISOString():(lp||"1970-01-01T00:00:00Z");first=false;
@@ -807,16 +796,34 @@ async function runAutoSync(silent=false){
           if(rows.length<200)break;
         }
         if(lp)await setSet("pull_"+n,lp);
-      }
 
-      /* 2) Upload local dirty records (both Staff auto-sync and Owner sync) */
-      const dirty=(await all(n)).filter(x=>x.dirty!==false);
-      for(let i=0;i<dirty.length;i+=20){
-        const ch=dirty.slice(i,i+20);
-        const rows=ch.map(x=>{const{dirty:_d,srv:_s,...d}=x;return{id:x.id,ts:x.ts||x.startedAt,data:d}});
-        const r=await sb(sess.access_token,tbl,{method:"POST",headers:{Prefer:"resolution=merge-duplicates,return=minimal"},body:JSON.stringify(rows)});
-        if(!r.ok)throw new Error("Upload failed: "+await apiErr(r));
-        for(const x of ch){x.dirty=false;await putRaw(n,x)}
+        const dirty=(await all(n)).filter(x=>x.dirty!==false);
+        for(let i=0;i<dirty.length;i+=20){
+          const ch=dirty.slice(i,i+20);
+          const rows=ch.map(x=>{const{dirty:_d,srv:_s,...d}=x;return{id:x.id,ts:x.ts||x.startedAt,data:d}});
+          const r=await sb(sess.access_token,tbl,{method:"POST",headers:{Prefer:"resolution=merge-duplicates,return=minimal"},body:JSON.stringify(rows)});
+          if(!r.ok)throw new Error("Upload failed: "+await apiErr(r));
+          for(const x of ch){x.dirty=false;await putRaw(n,x)}
+        }
+      }
+    }else{
+      /* TENDER MODE (ZERO LOGIN): Upload-only via secure RPC function (no read access) */
+      const dirtyTxs=(await all("transactions")).filter(x=>x.dirty!==false);
+      const dirtyShifts=(await all("shifts")).filter(x=>x.dirty!==false);
+      if(dirtyTxs.length||dirtyShifts.length){
+        for(let i=0;i<Math.max(dirtyTxs.length,dirtyShifts.length);i+=20){
+          const txChunk=dirtyTxs.slice(i,i+20);
+          const shChunk=dirtyShifts.slice(i,i+20);
+          const cleanTxs=txChunk.map(x=>{const{dirty:_d,srv:_s,...d}=x;return d});
+          const cleanShifts=shChunk.map(x=>{const{dirty:_d,srv:_s,...d}=x;return d});
+          const r=await sb(null,"rpc/sarisafe_tender_sync",{
+            method:"POST",
+            body:JSON.stringify({p_txs:cleanTxs,p_shifts:cleanShifts})
+          });
+          if(!r.ok)throw new Error("Auto-sync failed: "+await apiErr(r));
+          for(const x of txChunk){x.dirty=false;await putRaw("transactions",x)}
+          for(const x of shChunk){x.dirty=false;await putRaw("shifts",x)}
+        }
       }
     }
 
@@ -836,32 +843,6 @@ async function runAutoSync(silent=false){
   }
 }
 
-function askConnectDeviceSync(isStartup=false){
-  const title=isStartup?"Step 1: Connect Cloud Auto-Sync":"Connect Tender Device for Auto-Sync";
-  const cancelLbl=isStartup?"Skip (offline only)":"Cancel";
-  const d=modal(`<h3>☁ ${title}</h3>
-   <p class="note"><b>Do this first before recording transactions.</b> Sign in with the <b>Staff</b> account (<code>role = 'staff'</code>) so every transaction automatically uploads to the Owner's dashboard.</p>
-   <label for="de">Staff sync email</label><input id="de" type="email" autocomplete="off" placeholder="tender@fuentezstore.com">
-   <label for="dp">Password</label><input id="dp" type="password" autocomplete="off" placeholder="Enter tender password">
-   <p id="dErr" class="note" style="color:var(--red)"></p>
-   <div class="btns"><button class="btn" id="dGo">Connect &amp; auto-sync</button><button class="btn sec" id="dNo">${cancelLbl}</button></div>`);
-  d.querySelector("#dNo").onclick=()=>{S.offlineConfirmed=true;closeModal()};
-  const go=async()=>{
-    const e=d.querySelector("#de").value.trim(),p=d.querySelector("#dp").value,b=d.querySelector("#dGo"),er=d.querySelector("#dErr");
-    if(!e||!p){er.textContent="Enter the Staff email and password.";return}
-    er.textContent="";b.disabled=true;b.textContent="Connecting…";
-    try{
-      const sess=await sbAuth(e,p);
-      if(sess.role!=="staff")throw new Error("Please use a 'staff' account here so tenders cannot download store-wide records. Use your 'owner' account under Owner Full Sync.");
-      S.deviceAuth=sess;await setSet("deviceAuth",sess);
-      d.querySelector("#dp").value="";closeModal();banners();
-      await runAutoSync(false);
-      toast("Tender auto-sync connected.");if(S.tab==="backup")renderBackup();
-    }catch(err){er.textContent=err.message;b.disabled=false;b.textContent="Connect & auto-sync"}
-  };
-  d.querySelector("#dGo").onclick=go;d.querySelector("#dp").onkeydown=ev=>{if(ev.key==="Enter")go()};
-}
-
 function triggerOwnerSync(after){
   const done=after||(()=>{
     if(S.tab==="summary")renderSummary();
@@ -869,7 +850,7 @@ function triggerOwnerSync(after){
     else if(S.tab==="backup")renderBackup();
   });
   if(S.ownerAuth){
-    runAutoSync(false).then(()=>{toast("Store records synced.");done()}).catch(err=>{toast(err.message);askOwnerSync(done)});
+    runAutoSync(false).then(()=>{toast("All store records synced.");done()}).catch(err=>{toast(err.message);askOwnerSync(done)});
     return;
   }
   askOwnerSync(done);
@@ -878,7 +859,7 @@ function triggerOwnerSync(after){
 function askOwnerSync(after){
   const d=modal(`<h3>Owner Cloud Sync</h3>
    <p class="note">Sign in with your <b>Owner</b> account (<code>role = 'owner'</code>) to download all transactions from every tender device. Your Owner cloud session clears automatically when you lock Owner view.</p>
-   <label for="se">Owner account email</label><input id="se" type="email" autocomplete="off">
+   <label for="se">Owner account email</label><input id="se" type="email" autocomplete="off" placeholder="xyllannel@gmail.com">
    <label for="sp">Password</label><input id="sp" type="password" autocomplete="off">
    <p id="sErr" class="note" style="color:var(--red)"></p>
    <div class="btns"><button class="btn" id="sGo">Sync all devices</button><button class="btn sec" id="sNo">Cancel</button></div>`);
@@ -889,7 +870,7 @@ function askOwnerSync(after){
     er.textContent="";b.disabled=true;b.textContent="Syncing…";
     try{
       const sess=await sbAuth(e,p);
-      if(sess.role!=="owner")throw new Error("This account has role 'staff' and cannot download all store records. Sign in with an 'owner' account.");
+      if(sess.role!=="owner")throw new Error("Only an 'owner' account can view all store records.");
       S.ownerAuth=sess;
       await runAutoSync(false);
       d.querySelector("#sp").value="";closeModal();toast("All store records synced.");if(after)after();
@@ -900,25 +881,16 @@ function askOwnerSync(after){
 
 async function renderCloudCard(){
   const last=await getSet("lastSync"),el=document.createElement("div");el.className="card";
-  el.innerHTML=`<h2>Cloud Sync &amp; Role Access</h2>
+  el.innerHTML=`<h2>Cloud Sync &amp; Confidentiality</h2>
    <div class="sync-box">
-     <p style="margin:0 0 4px"><b>1. Tender Device Auto-Sync (Upload-Only):</b> ${S.deviceAuth?`<span class="st OK">Connected (${esc(S.deviceAuth.email)})</span>`:`<span class="st Pending">Not connected</span>`}</p>
-     <p class="note" style="margin:0 0 8px">Automatically uploads new transactions and shift updates from this device in the background. Tenders cannot view other devices' records.</p>
-     <div class="btns" style="margin:0 0 14px">
-       <button class="btn sec sm" id="cDevConnect">${S.deviceAuth?"Switch Staff account":"Connect device for auto-sync"}</button>
-       ${S.deviceAuth?`<button class="btn red sm" id="cDevDisconnect">Disconnect device</button>`:""}
-     </div>
+     <p style="margin:0 0 4px"><b>1. Tender Auto-Sync (Zero Login):</b> <span class="st OK">Active automatically on all devices</span></p>
+     <p class="note" style="margin:0 0 12px">Tenders do not need to log in. Every transaction, shift update, and cash-out confirmation uploads automatically in the background while tenders remain blocked from reading store-wide history.</p>
      <hr style="border:0;border-top:1px solid var(--line);margin:12px 0">
-     <p style="margin:0 0 4px"><b>2. Owner Full Store Sync:</b> ${S.ownerAuth?`<span class="st OK">Active (${esc(S.ownerAuth.email)})</span>`:`<span class="note">Locked until Owner signs in</span>`}</p>
-     <p class="note" style="margin:0 0 8px">${last?"Last sync: "+fmt(last):"Never synced."} Downloads all transactions across every tender device. Clears automatically when you tap <b>Lock owner view</b>.</p>
+     <p style="margin:0 0 4px"><b>2. Owner Full Store View:</b> ${S.ownerAuth?`<span class="st OK">Signed in (${esc(S.ownerAuth.email)})</span>`:`<span class="note">Locked until Owner signs in</span>`}</p>
+     <p class="note" style="margin:0 0 8px">${last?"Last sync: "+fmt(last):"Never synced."} Downloads all transactions across every tender device into your Owner dashboard. Clears automatically when you tap <b>Lock owner view</b>.</p>
      <div class="btns" style="margin:0"><button class="btn" id="cSync">Sync all store records now</button></div>
    </div>`;
   $("#v-backup").appendChild(el);
-  $("#cDevConnect").onclick=()=>askConnectDeviceSync(false);
-  if($("#cDevDisconnect"))$("#cDevDisconnect").onclick=async()=>{
-    if(S.deviceAuth?.access_token)fetch(`${SUPABASE_URL}/auth/v1/logout?scope=local`,{method:"POST",headers:{apikey:SUPABASE_KEY,Authorization:"Bearer "+S.deviceAuth.access_token}}).catch(()=>{});
-    S.deviceAuth=null;await setSet("deviceAuth",null);updateCloudBadge();banners();renderBackup();toast("Device auto-sync disconnected.");
-  };
   $("#cSync").onclick=()=>triggerOwnerSync(renderBackup);
 }
 
@@ -937,14 +909,11 @@ if("serviceWorker" in navigator&&location.protocol.startsWith("http"))navigator.
     document.querySelector("main").innerHTML=`<div class="card"><h2>Storage is unavailable</h2><p>This browser has blocked IndexedDB (for example, in private browsing). Enable site storage or use a normal browser window, then reload.</p></div>`;return}
   if(!(await getSet("pin"))){await setSet("pin",await hashPin("1234"));await setSet("pinDefault",true)}
   S.deviceId=await getSet("deviceId");if(!S.deviceId){S.deviceId=uid();await setSet("deviceId",S.deviceId)}
-  const savedDev=await getSet("deviceAuth");
-  if(savedDev&&savedDev.role==="staff")S.deviceAuth=savedDev;
-  else if(savedDev)await setSet("deviceAuth",null);
+  await setSet("deviceAuth",null);
   S.lastSync=await getSet("lastSync");
   await loadTiers();await refreshShift();syncStatusByType();show("counter");
   updateCloudBadge();
-  if(S.deviceAuth)scheduleAutoSync(600);
-  else if(navigator.onLine)askConnectDeviceSync(true);
+  scheduleAutoSync(500);
 })();
 </script>
 </body>
