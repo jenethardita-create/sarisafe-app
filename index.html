@@ -859,7 +859,7 @@ function triggerOwnerSync(after){
 function askOwnerSync(after){
   const d=modal(`<h3>Owner Cloud Sync</h3>
    <p class="note">Sign in with your <b>Owner</b> account (<code>role = 'owner'</code>) to download all transactions from every tender device. Your Owner cloud session clears automatically when you lock Owner view.</p>
-   <label for="se">Owner account email</label><input id="se" type="email" autocomplete="off" placeholder="xyllannel@gmail.com">
+   <label for="se">Owner account email</label><input id="se" type="email" autocomplete="off" placeholder="e.g. account@fuentezstore.com">
    <label for="sp">Password</label><input id="sp" type="password" autocomplete="off">
    <p id="sErr" class="note" style="color:var(--red)"></p>
    <div class="btns"><button class="btn" id="sGo">Sync all devices</button><button class="btn sec" id="sNo">Cancel</button></div>`);
