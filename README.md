@@ -14,19 +14,19 @@ SariSafe is an offline-first Progressive Web Application (PWA) developed for sar
 * **Real-Time Duplicate Reference Verification (`FR-01`, `FR-02`, `NFR-01`):** Checks entered GCash reference numbers (configured to the last 5 digits via `REF_DIGITS = 5`, or full 13 digits) against local IndexedDB indexes (`ref` and `tail`) in milliseconds, showing an inline status indicator and triggering a warning modal to cancel, log as a `Duplicate` attempt, or override if verified as a separate receipt.
 * **GCash Transaction Recording & Input Validation (`FR-03`):** Records `Cash-In` and `Cash-Out` entries with quick-amount chips (`₱100`, `₱200`, `₱500`, `₱1,000`), customer name, optional address, 11-digit Philippine mobile number validation (`09XXXXXXXXX`), and a mandatory customer accuracy confirmation checkbox.
 * **Offline-First Storage & Quota Health (`FR-04`, `NFR-04`, `NFR-05`, `NFR-06`):** Persists all transactions, shifts, and settings locally in IndexedDB (`SariSafeDB`) with a service worker (`sw.js`) for offline operation and a storage quota bar that warns the owner at 80% capacity.
-* **Role-Based Access Control (`FR-05`, `FR-07`):** Separates the app into a **Store Tender** view (`Counter` and `Shift` tabs) and a **Store Owner** view (`Counter`, `Shift`, `Summary`, `Log`, `Fees`, and `Backup` tabs) secured with a SHA-256 hashed 4-digit PIN.
+* **Role-Based Access Control (`FR-05`, `FR-07`):** Separates the app into a **Store Tender** view (`Counter` and `Shift` tabs) and a **Store Owner** view (`Counter`, `Shift`, `Summary`, `Log`, `Fees`, and `Backup` tabs) secured with a SHA-256 hashed 4-digit PIN (intended as a casual interface lock on shared store devices).
 * **CSV Export & JSON Backup/Restore (`FR-06`, `FR-12`):** Exports comma-separated transaction logs (`.csv`, filterable by specific date or all dates, with confirmed `OK` summary totals for Excel/Google Sheets) and full system snapshots (`.json`, containing transactions, signatures, shifts, and fee tiers) with non-destructive merge restore.
 * **Digital Customer Signatures & Printable Receipts (`FR-08`):** Captures touch/pointer signatures on an HTML5 Canvas pad, displays an automatic transaction receipt popup after saving, and stores signatures inside a searchable, printable transaction history log.
 * **Automated Service Fee (*Patong*) Tiers (`FR-09`):** Includes 100 pre-configured brackets covering `₱1` to `₱50,000` (`₱10` per `₱500` bracket, up to `₱1,000`), with per-transaction manual overrides and owner tier editing/reset controls.
-* **Transaction Status Rules & Offsetting Corrections (`FR-10`):** Automatically sets `Cash-In` entries to `OK` and locks `Cash-Out` entries to `Pending` until the tender verifies receipt of funds and taps **Mark OK**. Saved records cannot be edited or deleted; errors are reversed using offsetting `Correction` entries with a required explanation note.
+* **Transaction Status Rules & Offsetting Corrections (`FR-10`):** Automatically sets `Cash-In` entries to `OK` and locks `Cash-Out` entries to `Pending` until the tender verifies receipt of funds and taps **Mark OK**. Saved records cannot be edited or deleted; confirmed `OK` errors are reversed using offsetting `Correction` entries with a required explanation note.
 * **Shift & Cash Float Reconciliation (`FR-11`):** Tracks starting physical cash and GCash wallet balances per shift, updates expected balances live (with a show/hide privacy toggle), warns if `Pending` transactions remain before closing, and produces a shift Z-reading summary (`Balanced`, `Over`, or `Short`).
-* **Optional Manual Cloud Sync (Multi-Device Support):** Allows the store owner to manually sign in via Supabase Auth to upload local records and download records from other devices, signing out immediately afterward without saving credentials on the device.
+* **Optional Manual Cloud Sync (Multi-Device Support):** Allows the store owner to manually sign in via Supabase Auth to download updates from other devices and upload local records, signing out immediately afterward without saving credentials on the device.
 
 ---
 
 ## 3. Technologies and Versions
 * **Frontend:** HTML5, CSS3 (`styles.css`), Vanilla JavaScript (`"use strict"`, HTML5 Canvas API, Web Crypto API `SHA-256`)
-* **Local Storage & Offline PWA:** IndexedDB (`SariSafeDB`, schema v2), Service Worker API (`sw.js`, cache `sarisafe-v18`), Web App Manifest (`manifest.json`, `icon.svg`)
+* **Local Storage & Offline PWA:** IndexedDB (`SariSafeDB`, schema v2), Service Worker API (`sw.js`, cache `sarisafe-v20`), Web App Manifest (`manifest.json`, `icon.svg`)
 * **Optional Cloud Backend:** Supabase (PostgreSQL with Row-Level Security, Auth REST API v1, PostgREST v1 — schema in `supabase-setup.sql`)
 * **Hosting & Development Tools:** Vercel Static Hosting (`vercel.json`), Python 3 (`http.server`) for local serving, Git & GitHub
 
@@ -38,7 +38,8 @@ SariSafe is an offline-first Progressive Web Application (PWA) developed for sar
 * A modern web browser supporting IndexedDB and Service Workers (Chrome, Edge, Firefox, or Safari).
 * **For local testing:** Python 3.x (or another local HTTP server such as VS Code Live Server). *IndexedDB and Service Workers require `http://localhost` and will not work properly over `file://`.*
 
-### 4.2 Download / Clone
+### 4.2 Download & Run Locally
 ```bash
-git clone https://github.com/xyllannel-bit/sarisafe-app.git
-cd sarisafe
+git clone [https://github.com/xyllannel-bit/sarisafe-app.git](https://github.com/xyllannel-bit/sarisafe-app.git)
+cd sarisafe-app
+python3 -m http.server 8080

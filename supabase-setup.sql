@@ -1,4 +1,3 @@
-
 -- =========================================================
 -- SARISAFE: COMPLETE SUPABASE DATABASE SETUP
 -- One store, multiple authorized users and devices
@@ -147,7 +146,7 @@ as $$
 $$;
 
 
--- 8. AUTOMATIC USER AND TIMESTAMP TRACKING
+-- 8. AUTOMATIC USER, IMMUTABILITY, AND TIMESTAMP TRACKING
 
 create or replace function public.sarisafe_touch()
 returns trigger
@@ -162,6 +161,18 @@ begin
     new.created_by := auth.uid();
     new.updated_by := auth.uid();
   else
+    -- Enforce immutability of recorded transaction financial fields and signatures.
+    if tg_table_name = 'sarisafe_transactions' and (
+      new.data->>'kind'   is distinct from old.data->>'kind' or
+      new.data->>'amount' is distinct from old.data->>'amount' or
+      new.data->>'fee'    is distinct from old.data->>'fee' or
+      new.data->>'ref'    is distinct from old.data->>'ref' or
+      new.data->>'type'   is distinct from old.data->>'type' or
+      new.data->>'sig'    is distinct from old.data->>'sig'
+    ) then
+      raise exception 'Recorded transaction financial fields and signatures are immutable';
+    end if;
+
     -- Preserve the original creator and store.
     new.store_id := old.store_id;
     new.created_by := old.created_by;

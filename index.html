@@ -79,7 +79,6 @@
 </main>
 <div id="printArea"></div>
 <dialog id="dlg"></dialog>
-<div id="okPop" aria-hidden="true"><div><svg viewBox="0 0 52 52"><circle cx="26" cy="26" r="24"/><path d="M14 27l8 8 16-17"/></svg><p>Transaction saved</p></div></div>
 <div id="toast"></div>
 
 <script>
@@ -90,6 +89,7 @@
 const REF_DIGITS=5;
 const REF_HINT=REF_DIGITS>=13?"Enter the full 13-digit reference number.":`Enter the last ${REF_DIGITS} digits of the GCash reference number.`;
 const $=s=>document.querySelector(s);
+const safeSig=s=>/^data:image\/png;base64,[A-Za-z0-9+\/=]+$/.test(s||"")?s:"";
 const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const peso=n=>"₱"+Number(n||0).toLocaleString("en-PH",{minimumFractionDigits:2,maximumFractionDigits:2});
 const fmt=iso=>new Date(iso).toLocaleString("en-PH",{dateStyle:"short",timeStyle:"short"});
@@ -121,7 +121,7 @@ function openDB(){return new Promise((ok,no)=>{
   r.onsuccess=()=>ok(r.result);r.onerror=()=>no(r.error)})}
 
 /* ---------- state ---------- */
-const S={role:"tender",tab:"counter",tiers:[],shift:null,manualFee:false,signed:false,alerted:""};
+const S={role:"tender",tab:"counter",tiers:[],shift:null,manualFee:false,signed:false,alerted:"",dupOk:""};
 const DEFAULT_TIERS=Array.from({length:100},(_,i)=>({min:i*500+1,max:(i+1)*500,fee:(i+1)*10}));
 const TABS={tender:[["counter","Counter"],["shift","Shift"]],owner:[["counter","Counter"],["shift","Shift"],["summary","Summary"],["log","Log"],["settings","Fees"],["backup","Backup"]]};
 
@@ -138,7 +138,7 @@ async function loadTiers(){
     S.tiers=DEFAULT_TIERS.map(t=>({...t}));
     if(isLegacyDefault)await setSet("tiers",S.tiers);
   }else{
-    S.tiers=saved;
+    S.tiers=validTiers(saved)?saved:DEFAULT_TIERS.map(t=>({...t}));
   }
 }
 
@@ -160,7 +160,7 @@ $("#ownerBtn").onclick=()=>{
   let pin="";
   const d=modal(`<div class="pinbox"><div class="lock">🔒</div><h3>Store Owner</h3><p class="note">Enter your 4-digit PIN</p>
    <div class="dots" id="dots"><i></i><i></i><i></i><i></i></div><p id="pinErr" class="pinErr" aria-live="polite"></p>
-   <div class="pad">${[1,2,3,4,5,6,7,8,9].map(n=>`<button type="button" data-k="${n}">${n}</button>`).join("")}<button type="button" class="x" data-k="cancel">Cancel</button><button type="button" class="x" data-k="0">0</button><button type="button" class="x" data-k="back" aria-label="Delete">⌫</button></div></div>`,"pin");
+   <div class="pad">${[1,2,3,4,5,6,7,8,9].map(n=>`<button type="button" data-k="${n}">${n}</button>`).join("")}<button type="button" class="x" data-k="cancel">Cancel</button><button type="button" data-k="0">0</button><button type="button" class="x" data-k="back" aria-label="Delete">⌫</button></div></div>`,"pin");
   const paint=()=>d.querySelectorAll("#dots i").forEach((x,i)=>x.classList.toggle("on",i<pin.length));
   const press=async k=>{
     if(k==="cancel"){closeModal();return}
@@ -179,7 +179,7 @@ async function banners(){
   let h="";
   if(!S.shift)h+=`<div class="warn">No shift is open on this device. <a href="#shift" id="goShift" style="font-weight:700;text-decoration:underline;color:inherit">Open the Shift tab to enter your Tender name and start a shift</a> before recording transactions.</div>`;
   if(S.role==="owner"){
-    if(await getSet("pinDefault"))h+=`<div class="warn">You are still using the default PIN (1234). Change it under Fees &amp; PIN.</div>`;
+    if(await getSet("pinDefault"))h+=`<div class="warn">You are still using the default PIN (1234). Change it under Fees → Change owner PIN.</div>`;
     const e=await storageInfo();if(e&&e.pct>=80)h+=`<div class="warn">Browser storage is ${e.pct.toFixed(0)}% full. Export a backup now (Backup tab).</div>`;
   }
   $("#banners").innerHTML=h;
@@ -205,9 +205,9 @@ function showDup(hits){
   const d=modal(`<h3>⚠ ${REF_DIGITS<13?"Possible duplicate":"Duplicate reference number!"}</h3><p>${REF_DIGITS<13?`The last ${REF_DIGITS} digits match an earlier transaction. Compare the full GCash receipt before you continue:`:"This 13-digit reference was already recorded:"}</p><ul>${prev}</ul>
   <p><b>${REF_DIGITS<13?"If it is the same receipt, do not process it.":"Do not process this transaction."}</b></p>
   <div class="btns"><button class="btn red" id="dCancel">Cancel entry</button><button class="btn sec" id="dLog">Log as Duplicate attempt</button>${REF_DIGITS<13?'<button class="btn grn" id="dOk">Different receipt – continue</button>':""}</div>`,"alert");
-  d.querySelector("#dCancel").onclick=()=>{$("#ref").value="";S.alerted="";indicate("");syncStatusByType();closeModal();$("#ref").focus()};
+  d.querySelector("#dCancel").onclick=()=>{$("#ref").value="";S.alerted="";S.dupOk="";$("#status").value="OK";indicate("");syncStatusByType();closeModal();$("#ref").focus()};
   d.querySelector("#dLog").onclick=()=>{$("#status").value="Duplicate";$("#status").disabled=true;$("#statusNote").textContent="Flagged as Duplicate attempt.";closeModal();$("#amount").focus()};
-  const dOk=d.querySelector("#dOk");if(dOk)dOk.onclick=()=>{S.dupOk=$("#ref").value;closeModal();$("#amount").focus()};
+  const dOk=d.querySelector("#dOk");if(dOk)dOk.onclick=()=>{S.dupOk=$("#ref").value;$("#status").value="OK";syncStatusByType();closeModal();$("#amount").focus()};
 }
 function indicate(ref,ms,hits){
   const el=$("#refInd");el.className="";
@@ -220,6 +220,7 @@ $("#ref").oninput=async e=>{
   const v=e.target.value=e.target.value.replace(/\D/g,"").slice(0,REF_DIGITS);
   if(v.length<REF_DIGITS){S.alerted="";indicate(v);syncStatusByType();return}
   const t0=performance.now(),hits=await findDup(v),ms=Math.round(performance.now()-t0);
+  if($("#ref").value!==v)return;
   indicate(v,ms,hits);
   if(hits.length&&S.alerted!==v){S.alerted=v;showDup(hits)}
   else if(!hits.length){S.alerted="";syncStatusByType()}
@@ -286,17 +287,28 @@ $("#saveTx").onclick=async()=>{
   await put("transactions",t);resetForm();renderRecent();showReceipt(t);
 };
 
-/* ---------- recent list (today / active shift only), status update, corrections (FR-10) ---------- */
+/* ---------- recent list, status update, corrections (FR-10) ---------- */
 function txRowHtml(t,fixed){
   return `<tr><td>${fmt(t.ts)}</td><td>${esc(t.ref)}</td><td>${t.kind==="correction"?"Correction":esc(t.type)}</td><td>${peso(t.amount)}</td><td class="st ${esc(t.status)}">${esc(t.status)}</td><td>
    ${t.status==="Pending"?`<button class="btn grn sm" data-ok="${esc(t.id)}">Mark OK</button> `:""}
-   ${t.kind==="sale"&&t.status!=="Duplicate"&&!fixed.has(t.id)?`<button class="btn sec sm" data-fix="${esc(t.id)}">Correct</button>`:""}</td></tr>`;
+   ${t.kind==="sale"&&t.status==="OK"&&!fixed.has(t.id)?`<button class="btn sec sm" data-fix="${esc(t.id)}">Correct</button>`:""}</td></tr>`;
 }
 async function handleTxAction(e,refreshFn){
   const ok=e.target.dataset.ok,fx=e.target.dataset.fix;
-  if(ok){const t=(await all("transactions")).find(x=>x.id===ok);t.status="OK";if(S.shift&&!t.shiftId){t.shiftId=S.shift.id;t.tender=S.shift.tender}t.dirty=true;t.statusHistory.push({status:"OK",ts:new Date().toISOString()});await put("transactions",t);await refreshFn();toast("Confirmed OK.")}
+  if(ok){
+    const [txs,shifts]=await Promise.all([all("transactions"),all("shifts")]);
+    const t=txs.find(x=>x.id===ok);
+    if(!t)return;
+    const origSh=shifts.find(s=>s.id===t.shiftId);
+    const reassigned=Boolean(S.shift&&(!t.shiftId||origSh?.endedAt));
+    if(reassigned){t.shiftId=S.shift.id;t.tender=S.shift.tender}
+    t.status="OK";t.dirty=true;
+    (t.statusHistory=t.statusHistory||[]).push({status:"OK",ts:new Date().toISOString(),...(reassigned&&S.shift?{shiftId:S.shift.id,tender:S.shift.tender}:{})});
+    await put("transactions",t);await refreshFn();toast("Confirmed OK.");
+  }
   if(fx){const t=(await all("transactions")).find(x=>x.id===fx);
-    const d=modal(`<h3>Correct entry</h3><p class="note">The original record is kept. A new offsetting entry reverses ${peso(t.amount)} (${t.type}, ref ${esc(t.ref)}). Record the right values as a new transaction afterward.</p>
+    if(!t||t.status!=="OK")return;
+    const d=modal(`<h3>Correct entry</h3><p class="note">The original record is kept. A new offsetting entry reverses ${peso(t.amount)} (${esc(t.type)}, ref ${esc(t.ref)}). Record the right values as a new transaction afterward.</p>
     <label for="cn">Reason for correction (required)</label><textarea id="cn" rows="3"></textarea><div class="btns"><button class="btn" id="cOk">Log correction</button><button class="btn sec" id="cNo">Cancel</button></div>`);
     d.querySelector("#cNo").onclick=closeModal;
     d.querySelector("#cOk").onclick=async()=>{const n=d.querySelector("#cn").value.trim();if(!n){toast("An explanatory note is required.");return}
@@ -311,7 +323,7 @@ async function renderRecent(){
   const fixed=new Set(txs.filter(t=>t.kind==="correction").map(t=>t.corrects));
   const todayStr=day(new Date().toISOString());
   const visible=txs.filter(t=>day(t.ts)===todayStr&&(S.shift?t.shiftId===S.shift.id:(!t.shiftId&&t.device===S.deviceId)));
-  const pend=txs.filter(t=>t.status==="Pending"&&day(t.ts)===todayStr);
+  const pend=txs.filter(t=>t.status==="Pending");
   $("#pendingBox").hidden=!pend.length;
   $("#pendCount").textContent=pend.length;
   $("#pendingList").innerHTML=pend.length?`<table><tr><th>Time</th><th>Reference</th><th>Type</th><th>Amount</th><th>Status</th><th></th></tr>`+pend.map(t=>txRowHtml(t,fixed)).join("")+`</table>`:"";
@@ -342,7 +354,7 @@ async function renderShift(){
    <div class="kpi"><div>Starting cash<b>${peso(sh.startCash)}</b></div><div>Starting GCash<b>${peso(sh.startWallet)}</b></div>
    <div>Expected cash now<b>${peso(b.c)}</b></div><div>Expected GCash now<b>${peso(b.w)}</b></div></div></div>
    <div class="card"><h2>Close shift</h2>
-   ${myPend.length?`<div class="warn" style="margin-bottom:12px">You still have <b>${myPend.length} Pending</b> transaction${myPend.length===1?"":"s"} in this shift. Confirm (<b>Mark OK</b>) or log a <b>Correction</b> below before closing your shift.</div>`:""}
+   ${myPend.length?`<div class="warn" style="margin-bottom:12px">You still have <b>${myPend.length} Pending</b> transaction${myPend.length===1?"":"s"} in this shift. Confirm (<b>Mark OK</b>) below before closing your shift so balances stay accurate.</div>`:""}
    <div class="row"><div><label for="cc">Counted physical cash (₱)</label><input id="cc" type="number" min="0" step="0.01"></div>
    <div><label for="cw">Actual GCash wallet balance (₱)</label><input id="cw" type="number" min="0" step="0.01"></div></div>
    <div class="btns"><button class="btn red" id="sEnd">Close shift &amp; show summary</button></div></div>
@@ -474,7 +486,11 @@ async function renderLog(){
    <div class="chips" id="stTabs" style="margin:10px 0 6px">${[["ALL","All"],["OK","OK"],["Pending","Pending"],["Duplicate","Duplicate"]].map(([k,l])=>`<button type="button" data-st="${k}" class="${stFilter===k?"on":""}">${l} (${counts[k]})</button>`).join("")}</div>
    <p class="note">${txs.length} record(s) across ${days.size} day(s). Records cannot be edited or deleted.</p>${groups||'<p class="note">No transactions found.</p>'}</div>`;
   $("#lsync").onclick=()=>askSync(renderLog);
-  $("#lq").oninput=e=>{el.dataset.q=e.target.value;renderLog().then(()=>{const i=$("#lq");i.focus();i.setSelectionRange(99,99)})};
+  $("#lq").oninput=e=>{
+    const pos=e.target.selectionStart??e.target.value.length;
+    el.dataset.q=e.target.value;
+    renderLog().then(()=>{const i=$("#lq");if(i){i.focus();i.setSelectionRange(pos,pos)}});
+  };
   $("#stTabs").onclick=e=>{const st=e.target.dataset.st;if(st){el.dataset.st=st;renderLog()}};
   el.onclick=e=>{const id=e.target.dataset.view;if(id)viewTx(txs.find(x=>x.id===id))};
 }
@@ -483,7 +499,7 @@ function viewTx(t){
   if(t.statusHistory&&t.statusHistory.length>1)rows.push(["Status history",t.statusHistory.map(s=>s.status+" ("+stamp(s.ts)+")").join(" → ")]);
   if(t.dupOverride)rows.push(["Duplicate check","Matched an earlier receipt; tender confirmed it was a different one"]);
   if(t.note)rows.push(["Correction note",t.note]);
-  const body=`<h2 style="font-size:1.5rem">SariSafe Transaction</h2>${rows.map(([k,v])=>`<p class="dl"><b>${k}:</b> ${esc(v)}</p>`).join("")}${t.sig?`<h3>Customer Signature</h3><img src="${t.sig}" alt="Signature" class="bigsig">`:""}`;
+  const body=`<h2 style="font-size:1.5rem">SariSafe Transaction</h2>${rows.map(([k,v])=>`<p class="dl"><b>${k}:</b> ${esc(v)}</p>`).join("")}${t.sig?`<h3>Customer Signature</h3><img src="${safeSig(t.sig)}" alt="Signature" class="bigsig">`:""}`;
   $("#printArea").innerHTML=body;
   const d=modal(`<div class="detail">${body}<div class="btns"><button class="btn" id="vPrint">Print details</button><button class="btn sec" id="vClose">Close</button></div></div>`,"view");
   d.querySelector("#vPrint").onclick=()=>window.print();d.querySelector("#vClose").onclick=closeModal;
@@ -491,7 +507,7 @@ function viewTx(t){
 
 /* ---------- owner: fee tiers & PIN (FR-07, FR-09) ---------- */
 function renderSettings(){
-  const el=$("#v-settings"),row=(t={min:"",max:"",fee:""})=>`<div class="row tier" style="margin-bottom:6px"><input type="number" placeholder="From ₱" value="${t.min}"><input type="number" placeholder="To ₱" value="${t.max}"><input type="number" placeholder="Fee ₱" value="${t.fee}"></div>`;
+  const el=$("#v-settings"),row=(t={min:"",max:"",fee:""})=>`<div class="row tier" style="margin-bottom:6px"><input type="number" placeholder="From ₱" value="${esc(t.min)}"><input type="number" placeholder="To ₱" value="${esc(t.max)}"><input type="number" placeholder="Fee ₱" value="${esc(t.fee)}"></div>`;
   el.innerHTML=`<div class="card"><h2>Service fee tiers (patong)</h2>
    <p class="note" style="margin-bottom:8px">Default rates cover <b>₱1 up to ₱50,000</b> (₱10 per ₱500 bracket, up to ₱1,000 fee).</p>
    <div class="row" style="margin-bottom:4px;font-weight:700;font-size:.82rem;color:#52607a"><div>From (₱)</div><div>To (₱)</div><div>Fee (₱)</div></div>
@@ -516,6 +532,12 @@ function renderSettings(){
 /* ---------- owner: backup, export, import, storage health (FR-06, FR-12, NFR-05) ---------- */
 async function storageInfo(){try{const e=await navigator.storage.estimate();return{used:e.usage,quota:e.quota,pct:e.quota?e.usage/e.quota*100:0}}catch{return null}}
 function download(name,type,text){const a=document.createElement("a");a.href=URL.createObjectURL(new Blob([text],{type}));a.download=name;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),1000)}
+const isNum=v=>typeof v==="number"&&isFinite(v);
+const isDate=v=>typeof v==="string"&&!isNaN(Date.parse(v));
+function validTx(t){return !!t&&typeof t.id==="string"&&t.id.length>0&&t.id.length<=64&&/^\d{1,13}$/.test(String(t.ref))&&isNum(t.amount)&&isNum(t.fee)
+  &&["Cash-In","Cash-Out"].includes(t.type)&&["OK","Pending","Duplicate"].includes(t.status)&&isDate(t.ts)&&(!t.sig||safeSig(t.sig)===t.sig)}
+function validShift(s){return !!s&&typeof s.id==="string"&&s.id.length>0&&s.id.length<=64&&isNum(s.startCash)&&isNum(s.startWallet)&&isDate(s.startedAt)}
+function validTiers(a){return Array.isArray(a)&&a.length>0&&a.length<=500&&a.every(t=>t&&isNum(t.min)&&isNum(t.max)&&isNum(t.fee)&&t.min<=t.max&&t.fee>=0)}
 async function renderBackup(){
   const el=$("#v-backup"),e=await storageInfo(),lb=await getSet("lastBackup"),allTxs=await all("transactions");
   const todayStr=day(new Date().toISOString());
@@ -530,7 +552,8 @@ async function renderBackup(){
    </div>
    <p class="note" id="csvCountNote" style="margin:4px 0 10px"></p>
    <div class="btns"><button class="btn" id="xCsv">Export transaction log (CSV)</button><button class="btn sec" id="xJson">Full backup (JSON)</button></div>
-   <p class="note">CSV is comma-separated and organized for Excel/Google Sheets (no signature images). The JSON backup includes all transactions, signatures, shift history, and fee tiers.</p></div>
+   <p class="note">CSV is comma-separated and organized for Excel/Google Sheets (no signature images). The JSON backup includes all transactions, signatures, shift history, and fee tiers.</p>
+   <p class="note" style="color:#6b4a00"><b>Keep exports private.</b> Backups and CSV files contain customer names, phone numbers and signatures. Store them securely and do not share them.</p></div>
    <div class="card"><h2>Restore from backup</h2><label for="imp">Choose a SariSafe JSON backup file</label><input id="imp" type="file" accept=".json,application/json">
    <p class="note">Records are merged into this device's database; existing records are not deleted. The PIN is not restored.</p></div>`;
   renderCloudCard();
@@ -550,6 +573,7 @@ async function renderBackup(){
     const txs=(await all("transactions")).filter(t=>!d||day(t.ts)===d).sort((a,b)=>a.ts<b.ts?-1:1);
     if(!txs.length){toast(d?`No transactions found on ${d}.`:"No transactions to export.");return}
     const q=v=>`"${String(v??"").replace(/"/g,'""')}"`;
+    const qs=v=>{v=String(v??"");return q(/^[=+\-@\t\r]/.test(v)?"'"+v:v)};
     const txt=v=>v?`"=""${String(v).replace(/"/g,'""')}"""`:'""';
     const H=["Date","Time","Reference Number","Type","Amount (PHP)","Service Fee (PHP)","Total (PHP)","Status","Customer Name","Phone Number","Address","Tender","Entry Kind","Notes","Transaction ID","Shift ID"];
     const rows=txs.map(t=>{
@@ -557,7 +581,7 @@ async function renderBackup(){
       const dStr=`${dt.getFullYear()}-${p(dt.getMonth()+1)}-${p(dt.getDate())}`;
       const tStr=`${p(dt.getHours())}:${p(dt.getMinutes())}:${p(dt.getSeconds())}`;
       const amt=Number(t.amount||0),fee=Number(t.fee||0);
-      return [q(dStr),q(tStr),txt(t.ref),q(t.kind==="correction"?"Correction ("+t.type+")":t.type),q(amt.toFixed(2)),q(fee.toFixed(2)),q((amt+fee).toFixed(2)),q(t.status),q(t.name||""),txt(t.phone||""),q(t.addr||""),q(t.tender||""),q(t.kind||"sale"),q(t.note||""),q(t.id),q(t.shiftId||"")].join(",");
+      return [q(dStr),q(tStr),txt(t.ref),q(t.kind==="correction"?"Correction ("+t.type+")":t.type),q(amt.toFixed(2)),q(fee.toFixed(2)),q((amt+fee).toFixed(2)),q(t.status),qs(t.name||""),txt(t.phone||""),qs(t.addr||""),qs(t.tender||""),q(t.kind||"sale"),qs(t.note||""),q(t.id),q(t.shiftId||"")].join(",");
     });
     const okTxs=txs.filter(counted);
     const sum=(ty,f)=>okTxs.filter(t=>!ty||t.type===ty).reduce((a,t)=>a+Number(t[f]||0),0);
@@ -577,10 +601,13 @@ async function renderBackup(){
     const f=ev.target.files[0];if(!f)return;
     try{const b=JSON.parse(await f.text());
       if(b.app!=="SariSafe"||!Array.isArray(b.transactions)||!Array.isArray(b.shifts))throw 0;
-      if(!confirm(`Restore ${b.transactions.length} transactions and ${b.shifts.length} shifts into this device?`))return;
-      for(const t of b.transactions)await put("transactions",t);for(const s of b.shifts)await put("shifts",s);
-      if(Array.isArray(b.tiers)&&b.tiers.length){S.tiers=b.tiers;await setSet("tiers",b.tiers)}
-      await refreshShift();toast("Backup restored.");renderBackup()}
+      const goodTx=b.transactions.filter(validTx),goodSh=b.shifts.filter(validShift),badN=b.transactions.length-goodTx.length+b.shifts.length-goodSh.length;
+      if(!confirm(`Restore ${goodTx.length} transactions and ${goodSh.length} shifts into this device?`+(badN?`\n${badN} invalid record(s) will be skipped.`:"")+"\nRecords already on this device are kept if they are newer."))return;
+      let kept=0;
+      for(const t of goodTx){const cur=await getRec("transactions",t.id);if(cur&&(cur.statusHistory?.length||0)>(t.statusHistory?.length||0)){kept++;continue}await put("transactions",t)}
+      for(const s of goodSh){const cur=await getRec("shifts",s.id);if(cur&&cur.endedAt&&!s.endedAt){kept++;continue}await put("shifts",s)}
+      if(validTiers(b.tiers)){S.tiers=b.tiers;await setSet("tiers",b.tiers)}
+      await refreshShift();toast(`Backup restored.${kept?` ${kept} newer record(s) kept.`:""}${badN?` ${badN} invalid skipped.`:""}`);renderBackup()}
     catch{toast("That file is not a valid SariSafe backup.")}
   };
 }
@@ -593,7 +620,6 @@ function walletCard(txs){
 }
 $("#eye").onclick=()=>{S.hide=!S.hide;renderRecent()};
 $("#chips").onclick=e=>{const a=e.target.dataset.a;if(a){$("#amount").value=a;$("#amount").oninput()}};
-function successPop(){const o=$("#okPop");o.classList.remove("show");void o.offsetWidth;o.classList.add("show");setTimeout(()=>o.classList.remove("show"),1400)}
 function showReceipt(t){
   const total=Number(t.amount||0)+Number(t.fee||0);
   const rows=[
@@ -611,7 +637,7 @@ function showReceipt(t){
   if(t.tender)rows.push(["Tender",esc(t.tender)]);
   const body=`<div class="rcpt-head"><span class="rcpt-ok">✓ Transaction Saved</span><h2 style="margin:6px 0 2px;font-size:1.35rem">SariSafe Receipt</h2><p class="note" style="margin:0">Fuentez Store · GCash Service</p></div>`
     +`<div class="rcpt-body">${rows.map(([k,v])=>`<div class="rcpt-row"><span>${k}</span><span>${v}</span></div>`).join("")}</div>`
-    +(t.sig?`<div class="rcpt-sig"><span class="note">Customer Signature</span><img src="${t.sig}" alt="Customer Signature" class="bigsig"></div>`:"");
+    +(t.sig?`<div class="rcpt-sig"><span class="note">Customer Signature</span><img src="${safeSig(t.sig)}" alt="Customer Signature" class="bigsig"></div>`:"");
   $("#printArea").innerHTML=body;
   const d=modal(`<div class="detail">${body}<div class="btns"><button class="btn" id="rDone">Done</button><button class="btn sec" id="rPrint">Print</button></div></div>`,"view");
   d.querySelector("#rDone").onclick=closeModal;
@@ -642,16 +668,7 @@ async function runSync(email,password){
   try{
     token=await sbLogin(email,password);
     for(const [n,tbl] of Object.entries(TBL)){
-      /* 1) upload records created or changed on this device */
-      const dirty=(await all(n)).filter(x=>x.dirty!==false);
-      for(let i=0;i<dirty.length;i+=20){
-        const ch=dirty.slice(i,i+20);
-        const rows=ch.map(x=>{const{dirty:_d,srv:_s,...d}=x;return{id:x.id,ts:x.ts||x.startedAt,data:d}});
-        const r=await sb(token,tbl,{method:"POST",headers:{Prefer:"resolution=merge-duplicates,return=minimal"},body:JSON.stringify(rows)});
-        if(!r.ok)throw new Error("Upload failed: "+await apiErr(r));
-        for(const x of ch){x.dirty=false;await putRaw(n,x)}
-      }
-      /* 2) download records from other devices */
+      /* 1) download records from other devices first and resolve offline conflicts */
       let lp=await getSet("pull_"+n),first=true;
       for(;;){
         const since=first&&lp?new Date(Date.parse(lp)-60000).toISOString():(lp||"1970-01-01T00:00:00Z");first=false;
@@ -660,12 +677,30 @@ async function runSync(email,password){
         const rows=await r.json();
         for(const row of rows){
           lp=row.updated_at;const cur=await getRec(n,row.id);
-          if(cur&&cur.dirty!==false)continue;
-          if(!cur||cur.srv!==row.updated_at){await putRaw(n,{...row.data,dirty:false,srv:row.updated_at});changed=true}
+          if(!cur){await putRaw(n,{...row.data,dirty:false,srv:row.updated_at});changed=true;continue}
+          if(cur.dirty===false){
+            if(cur.srv!==row.updated_at){await putRaw(n,{...row.data,dirty:false,srv:row.updated_at});changed=true}
+            continue;
+          }
+          if(n==="transactions"&&row.data.status==="OK"){
+            await putRaw(n,{...row.data,dirty:false,srv:row.updated_at});changed=true;
+          }else if(n==="shifts"&&row.data.endedAt){
+            await putRaw(n,{...row.data,dirty:false,srv:row.updated_at});changed=true;
+          }
         }
         if(rows.length<200)break;
       }
       if(lp)await setSet("pull_"+n,lp);
+
+      /* 2) upload remaining records created or changed on this device */
+      const dirty=(await all(n)).filter(x=>x.dirty!==false);
+      for(let i=0;i<dirty.length;i+=20){
+        const ch=dirty.slice(i,i+20);
+        const rows=ch.map(x=>{const{dirty:_d,srv:_s,...d}=x;return{id:x.id,ts:x.ts||x.startedAt,data:d}});
+        const r=await sb(token,tbl,{method:"POST",headers:{Prefer:"resolution=merge-duplicates,return=minimal"},body:JSON.stringify(rows)});
+        if(!r.ok)throw new Error("Upload failed: "+await apiErr(r));
+        for(const x of ch){x.dirty=false;await putRaw(n,x)}
+      }
     }
     S.lastSync=new Date().toISOString();S.err="";await setSet("lastSync",S.lastSync);setCloud("ok");
     if(changed)await refreshShift();

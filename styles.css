@@ -56,14 +56,7 @@ dialog{border:0;border-radius:20px;padding:20px;max-width:440px;width:92%;box-sh
 dialog::backdrop{background:#0b2a5a99}
 dialog.alert{border:4px solid var(--red);animation:shake .4s}dialog.alert h3{color:var(--red);margin-top:0}
 #toast{position:fixed;left:50%;bottom:96px;transform:translateX(-50%);background:var(--ink);color:#fff;padding:10px 18px;border-radius:99px;display:none;z-index:9}
-.sig{height:36px;border:1px solid var(--line);border-radius:6px;cursor:zoom-in;background:#fff}
-#okPop{position:fixed;inset:0;display:none;place-items:center;background:#0b2a5a99;z-index:20}
-#okPop.show{display:grid;animation:fade .2s}
-#okPop>div{background:#fff;border-radius:24px;padding:26px 40px;text-align:center;animation:pop .35s cubic-bezier(.2,1.4,.4,1)}
-#okPop svg{width:84px;height:84px;fill:none;stroke:var(--grn);stroke-width:3;stroke-linecap:round;stroke-linejoin:round}
-#okPop circle{stroke-dasharray:151;stroke-dashoffset:151;animation:draw .5s .05s forwards}
-#okPop path{stroke-dasharray:40;stroke-dashoffset:40;animation:draw .35s .45s forwards}
-#okPop p{margin:8px 0 0;font-weight:700}
+#installBtn{white-space:nowrap}
 
 /* Owner PIN screen */
 dialog.pin{max-width:340px;text-align:center;padding:24px 20px}
@@ -77,9 +70,6 @@ dialog.pin{max-width:340px;text-align:center;padding:24px 20px}
 .pad button{height:58px;border:0;border-radius:16px;background:#eef5ff;color:var(--ink);font:inherit;font-size:1.4rem;font-weight:700;cursor:pointer;transition:transform .08s,background .1s}
 .pad button:active{transform:scale(.92);background:#cfe3ff}
 .pad .x{background:none;font-size:.95rem;color:var(--mut);font-weight:600}
-@keyframes draw{to{stroke-dashoffset:0}}
-@keyframes pop{from{transform:scale(.6);opacity:0}}
-@keyframes fade{from{opacity:0}}
 @keyframes shake{20%,60%{transform:translateX(-8px)}40%,80%{transform:translateX(8px)}}
 @media(prefers-reduced-motion:reduce){*{animation-duration:.01ms!important;transition:none!important}}
 
@@ -104,79 +94,19 @@ dialog.view{max-width:520px;max-height:90vh;overflow:auto}
 .day .dev{padding:0 14px;font-size:.85rem;color:var(--mut)}
 .day .tw{padding:0 8px 8px}
 .ts{white-space:nowrap}
+
 /* Auto-popup transaction receipt */
-.rcpt-head{text-align:center;padding-bottom:10px;border-bottom:2px dashed var(--line);margin-bottom:10px}
-.rcpt-ok{display:inline-block;background:#e3f6ec;color:var(--grn);font-weight:700;font-size:.82rem;padding:3px 12px;border-radius:99px}
-.rcpt-body{display:flex;flex-direction:column;gap:6px;font-size:.92rem}
-.rcpt-row{display:flex;justify-content:space-between;align-items:baseline;gap:12px;padding:3px 0;border-bottom:1px solid #f0f4fa}
-.rcpt-row span:first-child{color:var(--mut);font-size:.85rem}
+.rcpt-head{text-align:center;padding-bottom:12px;margin-bottom:12px;border-bottom:1.5px dashed #cbd5e1}
+.rcpt-ok{display:inline-block;background:#dcfce7;color:#166534;font-weight:700;font-size:.82rem;padding:4px 12px;border-radius:999px}
+.rcpt-body{display:flex;flex-direction:column;gap:8px}
+.rcpt-row{display:flex;justify-content:space-between;align-items:baseline;gap:12px;font-size:.95rem;padding-bottom:6px;border-bottom:1px solid #f1f5f9}
+.rcpt-row span:first-child{color:#64748b}
 .rcpt-row span:last-child{text-align:right}
-.rcpt-sig{margin-top:10px}
+.rcpt-sig{margin-top:12px;padding-top:10px;border-top:1.5px dashed #cbd5e1;text-align:center}
 .rcpt-sig .note{display:block;margin-bottom:4px}
+.rcpt-sig .bigsig{max-height:110px;object-fit:contain;margin-top:4px}
 
-#installBtn {
-  white-space: nowrap;
-}
-.rcpt-head {
-  text-align: center;
-  padding-bottom: 12px;
-  margin-bottom: 12px;
-  border-bottom: 1.5px dashed #cbd5e1;
-}
-.rcpt-ok {
-  display: inline-block;
-  background: #dcfce7;
-  color: #166534;
-  font-weight: 700;
-  font-size: 0.82rem;
-  padding: 4px 12px;
-  border-radius: 999px;
-}
-.rcpt-body {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-.rcpt-row {
-  display: flex;
-  justify-content: space-between;
-  align-items: baseline;
-  gap: 12px;
-  font-size: 0.95rem;
-  padding-bottom: 6px;
-  border-bottom: 1px solid #f1f5f9;
-}
-.rcpt-row span:first-child {
-  color: #64748b;
-}
-.rcpt-row span:last-child {
-  text-align: right;
-}
-.rcpt-sig {
-  margin-top: 12px;
-  padding-top: 10px;
-  border-top: 1.5px dashed #cbd5e1;
-  text-align: center;
-}
-.rcpt-sig .bigsig {
-  max-height: 110px;
-  object-fit: contain;
-  margin-top: 4px;
-}
-
-/* ---------- Pending queue & Log filter pills ---------- */
-.pend-card {
-  border-left: 4px solid #f59e0b;
-  background: #fffbeb;
-}
-.pend-badge {
-  background: #f59e0b;
-  color: #fff;
-  margin-left: 6px;
-}
-#stTabs button.on {
-  background: #007cff;
-  color: #fff;
-  border-color: #007cff;
-}
-
+/* Pending queue & Log filter pills */
+.pend-card{border-left:4px solid #f59e0b;background:#fffbeb}
+.pend-badge{background:#f59e0b;color:#fff;margin-left:6px}
+#stTabs button.on{background:#007cff;color:#fff;border-color:#007cff}
