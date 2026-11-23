@@ -17,7 +17,7 @@
 <header>
   <h1>SariSafe <span class="note" style="color:#c9d3ea">Fuentez Store</span><span class="badge" id="roleBadge">Store Tender</span></h1>
   <div class="hbtns">
-    <span class="chip" id="cloudChip" hidden></span>
+    <button class="btn sec sm" id="cloudChip" type="button">☁ Connect sync</button>
     <button class="btn sec sm" id="privacyTopBtn" type="button">🔒 Privacy</button>
     <button class="btn sec sm" id="installBtn" hidden>📲 Install App</button>
     <button class="btn sec sm" id="ownerBtn">Owner login</button>
@@ -226,7 +226,7 @@ async function banners(){
   if(!S.shift)h+=`<div class="warn">No shift is open on this device. <a href="#shift" id="goShift" style="font-weight:700;text-decoration:underline;color:inherit">Open the Shift tab to enter your Tender name and start a shift</a> before recording transactions.</div>`;
   if(S.role==="owner"){
     if(await getSet("pinDefault"))h+=`<div class="warn">You are still using the default PIN (1234). Change it under Fees → Change owner PIN.</div>`;
-    if(!S.deviceAuth)h+=`<div class="warn">Tender auto-sync is not linked on this device yet. Connect a Staff sync account under <b>Backup → Tender Device Auto-Sync</b> so tender entries upload automatically.</div>`;
+    if(!S.deviceAuth)h+=`<div class="warn">Tender auto-sync is not linked on this device yet. Tap <b>☁ Connect sync</b> at the top (or go to <b>Backup</b>) and sign in with your Staff account so tender entries upload automatically.</div>`;
     const e=await storageInfo();if(e&&e.pct>=80)h+=`<div class="warn">Browser storage is ${e.pct.toFixed(0)}% full. Export a backup now (Backup tab).</div>`;
   }
   $("#banners").innerHTML=h;
@@ -699,21 +699,26 @@ const getRec=(n,id)=>rq(store(n).get(id));
 
 function updateCloudBadge(state="idle"){
   const c=$("#cloudChip");
-  const active=(S.role==="owner"&&S.ownerAuth)||S.deviceAuth;
-  if(!active&&state==="idle"){c.hidden=true;return}
-  c.hidden=false;
   const t=S.lastSync?new Date(S.lastSync).toLocaleTimeString("en-PH",{hour:"numeric",minute:"2-digit"}):"";
   if(state==="syncing"){c.textContent="☁ Auto-syncing…";c.title="";return}
   if(state==="error"){c.textContent="☁ Sync error";c.title=S.err||"";return}
-  if(!navigator.onLine){c.textContent="☁ Offline (queued)";c.title="Changes will auto-sync when online";return}
+  if(!navigator.onLine&&(S.deviceAuth||S.ownerAuth)){c.textContent="☁ Offline (queued)";c.title="Changes will auto-sync when online";return}
   if(S.role==="owner"&&S.ownerAuth){
     c.textContent=t?`☁ Owner synced ${t}`:"☁ Owner auto-sync";
     c.title="Full store sync active while Owner view is unlocked";
   }else if(S.deviceAuth){
     c.textContent=t?`☁ Auto-synced ${t}`:"☁ Auto-sync ready";
     c.title="Tender upload-only sync active";
+  }else{
+    c.textContent="☁ Connect sync";
+    c.title="Tap to connect tender auto-sync";
   }
 }
+$("#cloudChip").onclick=()=>{
+  if(S.role==="owner"){triggerOwnerSync();return}
+  if(!S.deviceAuth){askConnectDeviceSync();return}
+  runAutoSync(false).then(()=>toast("Synced to cloud.")).catch(err=>toast(err.message));
+};
 
 async function apiErr(r){let t="";try{const j=await r.clone().json();t=j.message||j.msg||j.error_description||j.error||""}catch{}return r.status+" "+t}
 const sb=(token,path,o={})=>fetch(SUPABASE_URL+"/rest/v1/"+path,{...o,headers:{apikey:SUPABASE_KEY,Authorization:"Bearer "+token,"Content-Type":"application/json",...(o.headers||{})}});
@@ -822,7 +827,7 @@ async function runAutoSync(silent=false){
 
 function askConnectDeviceSync(){
   const d=modal(`<h3>Connect Tender Device for Auto-Sync</h3>
-   <p class="note">Owner setup (one time per counter device). Sign in with a <b>Staff</b> Supabase account (<code>role = 'staff'</code>). Transactions recorded on this device will upload automatically in the background, while tenders remain blocked from viewing other devices' records.</p>
+   <p class="note">Connect this counter device using a <b>Staff</b> Supabase account (<code>role = 'staff'</code>). Transactions recorded here will upload automatically in the background, while other devices' records stay hidden.</p>
    <label for="de">Staff sync email</label><input id="de" type="email" autocomplete="off" placeholder="tender@fuentezstore.com">
    <label for="dp">Password</label><input id="dp" type="password" autocomplete="off">
    <p id="dErr" class="note" style="color:var(--red)"></p>
@@ -838,18 +843,23 @@ function askConnectDeviceSync(){
       S.deviceAuth=sess;await setSet("deviceAuth",sess);
       d.querySelector("#dp").value="";closeModal();banners();
       await runAutoSync(false);
-      toast("Tender auto-sync connected.");renderBackup();
+      toast("Tender auto-sync connected.");if(S.tab==="backup")renderBackup();
     }catch(err){er.textContent=err.message;b.disabled=false;b.textContent="Connect & auto-sync"}
   };
   d.querySelector("#dGo").onclick=go;d.querySelector("#dp").onkeydown=ev=>{if(ev.key==="Enter")go()};
 }
 
 function triggerOwnerSync(after){
+  const done=after||(()=>{
+    if(S.tab==="summary")renderSummary();
+    else if(S.tab==="log")renderLog();
+    else if(S.tab==="backup")renderBackup();
+  });
   if(S.ownerAuth){
-    runAutoSync(false).then(()=>{toast("Store records synced.");if(after)after()}).catch(err=>{toast(err.message);askOwnerSync(after)});
+    runAutoSync(false).then(()=>{toast("Store records synced.");done()}).catch(err=>{toast(err.message);askOwnerSync(done)});
     return;
   }
-  askOwnerSync(after);
+  askOwnerSync(done);
 }
 
 function askOwnerSync(after){
