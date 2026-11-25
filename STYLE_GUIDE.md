@@ -49,19 +49,40 @@ This style guide establishes consistent coding, formatting, architectural, error
 ## 5. Architectural & Folder Structure
 SariSafe uses an **Offline-First Modular Monolith** architecture designed for zero-build reliability on low-spec store devices:
 
-```text
-sarisafe-app/
-├── index.html           # Main PWA shell, Counter/Shift/Owner views, IndexedDB & sync logic
-├── styles.css           # GCash-inspired responsive theme, modals, print receipt & PIN styles
-├── sw.js                # Network-first Service Worker for offline shell availability
-├── manifest.json        # PWA installation metadata
-├── icon.svg             # Vector app icon
-├── supabase-setup.sql   # PostgreSQL schema, immutability triggers, write-only RPC, and RLS policies
-├── vercel.json          # HTTP security headers (CSP/X-Frame-Options/nosniff) & SW cache rules
-├── .gitignore           # Excludes .env, local files, and exported customer CSV/JSON backups
-├── .gitattributes       # Enforces LF line normalization
-├── README.md            # Project overview, setup, run instructions, and final commit metadata
-├── STYLE_GUIDE.md       # Team coding and formatting standards
-├── CONTRIBUTING.md      # Branching, commit message, and pull-request workflow
-└── docs/
-    └── testing/         # Lab Worksheet 11 test plan, test cases, and defect evidence
+    sarisafe-app/
+    ├── index.html           # Main PWA shell, Counter/Shift/Owner views, IndexedDB & sync logic
+    ├── styles.css           # GCash-inspired responsive theme, modals, print receipt & PIN styles
+    ├── sw.js                # Network-first Service Worker for offline shell availability
+    ├── manifest.json        # PWA installation metadata
+    ├── icon.svg             # Vector app icon
+    ├── supabase-setup.sql   # PostgreSQL schema, immutability triggers, write-only RPC, and RLS policies
+    ├── vercel.json          # HTTP security headers (CSP/X-Frame-Options/nosniff) & SW cache rules
+    ├── .gitignore           # Excludes .env, local files, and exported customer CSV/JSON backups
+    ├── .gitattributes       # Enforces LF line normalization
+    ├── README.md            # Project overview, setup, run instructions, and final commit metadata
+    ├── STYLE_GUIDE.md       # Team coding and formatting standards
+    ├── CONTRIBUTING.md      # Branching, commit message, and pull-request workflow
+    └── docs/
+        └── testing/         # Lab Worksheet 11 test plan, test cases, and defect evidence
+
+### Key Architectural Rules
+1. **Offline-First Persistence (`FR-004`, `NFR-004`):** All transactions and shifts must write to local IndexedDB (`SariSafeDB`) first before attempting background cloud sync.
+2. **Strict Role Separation (`FR-005`, `FR-007`, `NFR-006`):** Keep Store Tender views (`Counter`, `Shift`) isolated from Store Owner views (`Summary`, `Log`, `Fees`, `Backup`). Never expose Owner data to unauthenticated `anon` queries.
+3. **Cache Invalidation (`sw.js`):** Whenever `index.html`, `styles.css`, `manifest.json`, or `icon.svg` is updated, increment `CACHE` (e.g., `"sarisafe-v24"` → `"sarisafe-v25"`).
+
+---
+
+## 6. Error Handling, Security & Data Integrity
+* **Input Validation (`FR-003`):** Validate all form inputs on the client before saving (`REF_DIGITS` numeric check, positive amount, non-empty customer name, valid fee >= 0, 11-digit Philippine mobile `09XXXXXXXXX`, non-empty `<canvas>` signature, and mandatory privacy/accuracy checkbox).
+* **XSS & CSV Formula Injection Prevention:**
+  * Escape all user-supplied text rendered into HTML templates using `esc()` and validate signature data URLs with `safeSig()`.
+  * Sanitize exported CSV text cells (`name`, `addr`, `tender`, `note`) with `qs()` to neutralize leading `=`, `+`, `-`, or `@` characters.
+* **Graceful Offline & Storage Degradation:** Wrap IndexedDB, `navigator.storage.estimate()`, and `fetch()` calls in `try...catch` blocks. Surface user-friendly messages via `toast()`, `#refInd`, or `#banners`—never show raw stack traces.
+* **Financial Immutability (`FR-010`, `BR-003`):** Never edit or delete confirmed `OK` transactions. Correct errors exclusively through offsetting `Correction` entries with a required explanatory note, backed by the database `sarisafe_touch` trigger.
+* **No Committed Secrets or PII:** Never commit `.env` files, Supabase `service_role` keys, or real customer CSV/JSON exports.
+
+---
+
+## 7. Comments & Documentation Standards
+* **SRS Traceability Headers:** Every major functional section in `index.html` and `styles.css` must include a section banner referencing the corresponding SRS requirement IDs (e.g., `/* ---------- duplicate lookup (FR-001, FR-002, NFR-001) ---------- */`).
+* **Public & Core Function Documentation:** Document complex business logic—such as fee bracket matching (`calcFee`), balance reconciliation (`balances`), JSON backup schema validation (`validTx`, `validShift`), and SQL RLS/RPC functions (`sarisafe_tender_sync`)—with concise comments explaining inputs, side effects, and constraints.

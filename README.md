@@ -1,7 +1,7 @@
 # SariSafe
 **GCash Transaction Recording and Verification System for Sari-Sari Stores in Brgy. Sumilihon, Butuan City**  
 CSC 106 – Software Engineering 1 · Caraga State University – College of Computing and Information Sciences  
-Pilot Store: **Fuentez Store** | Live Deployment: https://sarisafe.vercel.app/
+Pilot Store: **Fuentez Store** | Live Deployment: [https://sarisafe.vercel.app/](https://sarisafe.vercel.app/)
 
 ---
 
@@ -39,6 +39,96 @@ SariSafe is an offline-first Progressive Web Application (PWA) developed for sar
 * **For local testing:** Python 3.x (or VS Code Live Server). *Note: IndexedDB and Service Workers require `http://localhost` and will not work if opened directly via `file://`.*
 
 ### 4.2 Download / Clone
-```bash
-git clone [https://github.com/xyllannel-bit/sarisafe-app.git](https://github.com/xyllannel-bit/sarisafe-app.git)
-cd sarisafe-app
+
+    git clone [https://github.com/xyllannel-bit/sarisafe-app.git](https://github.com/xyllannel-bit/sarisafe-app.git)
+    cd sarisafe-app
+
+### 4.3 Configuration (Local vs. Cloud Sync)
+* **Offline / Local Mode (Zero Setup Required):** SariSafe works out of the box with no `.env` file or server configuration. All records are stored locally in the browser's `SariSafeDB` IndexedDB database.
+* **Optional Supabase Cloud Backend Setup:** The repository includes `supabase-setup.sql` containing the complete PostgreSQL table definitions, Row-Level Security (RLS) policies, immutability triggers, and the `sarisafe_tender_sync` RPC function. To connect your own Supabase instance:
+  1. Create a new Supabase project and run `supabase-setup.sql` in the **SQL Editor**.
+  2. Create a Store Owner user in **Authentication -> Users** and link their `user_id` with `role = 'owner'` in `public.sarisafe_profiles` (see Step 15 of `supabase-setup.sql`).
+  3. Replace `SUPABASE_URL` and `SUPABASE_KEY` (publishable anon key) in `index.html` with your project's public credentials. *Never place a Supabase `service_role` key in client-side code.*
+
+### 4.4 How to Start the Application
+1. From the `sarisafe-app` folder, start a local static HTTP server:
+
+       python3 -m http.server 8080
+
+   *(On Windows, use `python -m http.server 8080`.)*
+2. Open a browser and navigate to:
+
+       http://localhost:8080
+
+3. Alternatively, access the live deployed PWA directly at `[https://sarisafe.vercel.app/](https://sarisafe.vercel.app/)` (supports offline mode after first load and "Install App" prompt).
+
+---
+
+## 5. Sample Accounts / Test Data
+* **Store Tender / Customer Counter View:** No login required; opens directly on the **Counter** tab. To start recording:
+  1. Open the **Shift** tab, enter a sample Tender Name (e.g., `Tender Ana`), Starting Cash (`5000`), and Starting GCash Wallet (`10000`), then tap **Start shift**.
+  2. Return to **Counter** and enter sample test data:
+     * **GCash Reference (last 5 digits):** `48291`
+     * **Type:** `Cash-In` (or `Cash-Out` to test the `Pending` confirmation queue)
+     * **Amount:** `500` (auto-fills `₱10` service fee)
+     * **Customer Name:** `Juan Dela Cruz`
+     * **Phone:** `09123456789`
+     * Draw a sample signature on the canvas pad, tick the accuracy & Privacy Policy checkbox, and tap **Save transaction**.
+  3. Re-enter `48291` in the reference field to verify the instant duplicate warning modal.
+* **Store Owner View (Local PIN):**
+  * Tap **Owner login** in the top-right header and enter the default 4-digit PIN: **`1234`** (can be changed under **Fees -> Change owner PIN**).
+* **Owner Cloud Sync (Optional):**
+  * Requires an authenticated Supabase Owner account (`role = 'owner'` in `sarisafe_profiles`). Evaluators without Owner cloud credentials can test all Owner features (`Summary`, `Log`, `Fees`, `Backup` CSV/JSON export & restore) using local IndexedDB data.
+
+---
+
+## 6. Running the Tests
+SariSafe uses a structured manual and browser DevTools test suite documented in `docs/testing/` (Lab Worksheet 11):
+1. Start the local server (`python3 -m http.server 8080`) and open `http://localhost:8080` in Chrome/Edge.
+2. Open **DevTools (`F12`)**:
+   * **Application -> IndexedDB -> SariSafeDB:** Inspect `transactions`, `shifts`, and `settings` object stores, plus the `ref` and `tail` indexes.
+   * **Application -> Service Workers / Network -> Offline:** Toggle **Offline** mode and reload the page to verify offline PWA shell loading and offline transaction recording (`FR-004`, `NFR-004`).
+   * **Console:** Verify zero uncaught JavaScript errors during duplicate lookup, signature capture, shift closing, and CSV/JSON export.
+3. Execute test cases `TC-01` through `TC-18` in `docs/testing/` (covering unit validation/fee math, integration with IndexedDB/Supabase RPC, system workflows, and acceptance scenarios).
+
+---
+
+## 7. Project Structure
+
+    sarisafe-app/
+    ├── index.html           # Main PWA entry point: Counter, Shift, and Owner views, IndexedDB & sync logic
+    ├── styles.css           # Responsive GCash-inspired styling, PIN keypad, modals, and print receipt layout
+    ├── sw.js                # Network-first Service Worker for offline caching of the app shell
+    ├── manifest.json        # PWA manifest configuration (name, theme color, standalone display, icon)
+    ├── icon.svg             # Vector shield-checkmark application icon
+    ├── supabase-setup.sql   # PostgreSQL schema, immutability triggers, write-only tender RPC, and RLS policies
+    ├── vercel.json          # Vercel security headers (nosniff, X-Frame-Options DENY, no-referrer) & SW cache rules
+    ├── .gitignore           # Excludes environment files, OS metadata, and exported customer CSV/JSON backups
+    ├── .gitattributes       # Enforces automatic LF line-ending normalization
+    ├── README.md            # Project overview, setup instructions, test data, and final build metadata
+    ├── STYLE_GUIDE.md       # Team coding, naming, formatting, and security standards
+    ├── CONTRIBUTING.md      # Feature branch workflow, commit conventions, and peer-review checklist
+    └── docs/
+        └── testing/         # Lab Worksheet 11: Software Test Plan, Test Cases, Results, and Defect Reports
+
+---
+
+## 8. Team (SariSafe Navigators – Section ABJQ1 / BDLR1)
+* **Tabita, Steward C.** — Project Leader, Shift Reconciliation & QA / Testing Lead
+* **Lagare, Xyll Anne M.** — Lead Developer & Software Release Lead (Core PWA, IndexedDB, Supabase Sync & Deployment)
+* **Ardita, Jeneth Diaz** — Frontend / UX Developer & Compilation Lead (UI/CSS, Signature Pad, Privacy Policy & Documentation)
+* **Dumanillo, Dillian B.** — Frontend / Data Developer & Evidence Custodian (Fee Tiers, Owner PIN, CSV/JSON Backup & Storage Health)
+
+---
+
+## 9. Known Limitations
+* **Last-5-Digit Reference Matching Default:** To speed up counter operations during peak store hours, `REF_DIGITS` is configured to `5` (matching the last 5 digits of the 13-digit GCash reference number). While rare collisions between different receipts sharing the same last 5 digits are handled via the *"Different receipt – continue"* override option, full 13-digit verification requires manual visual comparison of the customer's GCash screen.
+* **No Direct GCash / e-Wallet API Integration:** In accordance with project scope exclusions (no official GCash partner merchant API access), SariSafe records and verifies reference numbers entered at the counter rather than automatically querying GCash servers or transferring funds.
+* **Single-Store Scope:** The database schema and UI are tailored for a single store (`Fuentez Store`) and do not include multi-branch inventory or *utang* (credit) ledger tracking.
+* **Browser Storage Volatility if Cleared Manually:** Because offline records live in browser IndexedDB (`SariSafeDB`), clearing browser site data on a device that has not synced to Supabase or exported a JSON backup will erase un-synced local records.
+
+---
+
+## 10. Final Version
+* **Repository:** [https://github.com/xyllannel-bit/sarisafe-app.git](https://github.com/xyllannel-bit/sarisafe-app.git)
+* **Live URL:** [https://sarisafe.vercel.app/](https://sarisafe.vercel.app/)
