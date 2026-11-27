@@ -12,7 +12,7 @@ SariSafe is an offline-first Progressive Web Application (PWA) developed for sar
 
 ## 2. Features (Implemented)
 * **Real-Time Duplicate Reference Verification (`FR-001`, `FR-002`, `NFR-001`):** Checks entered GCash reference numbers (configured to the last 5 digits via `REF_DIGITS = 5`, or full 13 digits) against local IndexedDB indexes (`ref` and `tail`) in milliseconds, showing an inline status indicator and triggering a warning modal to cancel, log as a `Duplicate` attempt, or override if verified as a separate receipt.
-* **GCash Transaction Recording & Input Validation (`FR-003`):** Records `Cash-In` and `Cash-Out` entries with quick-amount chips (`₱100`, `₱200`, `₱500`, `₱1,000`), customer name, optional address, 11-digit Philippine mobile number validation (`09XXXXXXXXX`), and a mandatory customer accuracy & Privacy Policy confirmation checkbox.
+* **GCash Transaction Recording & Input Validation (`FR-003`):** Records `Cash-In` and `-Out` entries with quick-amount chips (`₱100`, `₱200`, `₱500`, `₱1,000`), customer name, optional address, 11-digit Philippine mobile number validation (`09XXXXXXXXX`), and a mandatory customer accuracy & Privacy Policy confirmation checkbox.
 * **Offline-First Storage & Quota Health (`FR-004`, `NFR-004`, `NFR-005`):** Persists all transactions, shifts, and settings locally in IndexedDB (`SariSafeDB`, schema v2) with a network-first Service Worker (`sw.js`) for full offline operation and a storage quota bar that warns the owner at 80% capacity.
 * **Role-Based Access Control (`FR-005`, `FR-007`):** Separates the app into a **Store Tender** view (`Counter` and `Shift` tabs) and a **Store Owner** view (`Counter`, `Shift`, `Summary`, `Log`, `Fees`, and `Backup` tabs) secured with a SHA-256 hashed 4-digit PIN.
 * **CSV Export & JSON Backup/Restore (`FR-006`, `FR-012`):** Exports formula-sanitized comma-separated transaction logs (`.csv`, filterable by specific date or all dates, with confirmed `OK` summary totals for Excel/Google Sheets) and full system snapshots (`.json`, containing transactions, signatures, shifts, and fee tiers) with non-destructive merge restore.
@@ -20,6 +20,7 @@ SariSafe is an offline-first Progressive Web Application (PWA) developed for sar
 * **Automated Service Fee (*Patong*) Tiers (`FR-009`):** Includes 100 pre-configured brackets covering `₱1` to `₱50,000` (`₱10` per `₱500` bracket, up to `₱1,000`), with per-transaction manual overrides and owner tier editing/reset controls.
 * **Transaction Status Rules & Offsetting Corrections (`FR-010`, `BR-003`):** Automatically sets `Cash-In` entries to `OK` and locks `Cash-Out` entries to `Pending` until the tender verifies receipt of funds and taps **Mark OK**. Saved records cannot be edited or deleted; confirmed `OK` errors are reversed using offsetting `Correction` entries with a required explanation note.
 * **Shift & Cash Float Reconciliation (`FR-011`):** Tracks starting physical cash and GCash wallet balances per shift, updates expected balances live (with a show/hide privacy toggle), warns if `Pending` transactions remain before closing, and produces a shift Z-reading summary (`Balanced`, `Over`, or `Short`).
+  
 * **Zero-Login Tender Auto-Sync & Owner-Only Full Read (`NFR-006`, RA 10173):** Tender devices automatically upload new transactions, status confirmations, and shift updates in the background via a write-only Supabase RPC (`sarisafe_tender_sync`) with zero `SELECT` access to store-wide records. Only the authenticated Store Owner (`role = 'owner'`) can download and view all store transactions across devices, and the Owner cloud session clears automatically when locking Owner view.
 
 ---
@@ -35,17 +36,17 @@ SariSafe is an offline-first Progressive Web Application (PWA) developed for sar
 ## 4. Installation and Setup
 
 ### 4.1 Requirements
-* A modern web browser supporting IndexedDB and Service Workers (Chrome 90+, Edge 90+, Firefox 90+, or Safari 15+).
-* **For local testing:** Python 3.x (or VS Code Live Server). *Note: IndexedDB and Service Workers require `http://localhost` and will not work if opened directly via `file://`.*
+- A modern web browser supporting IndexedDB and Service Workers (Chrome 90+, Edge 90+, Firefox 90+, or Safari 15+).
+- **For local testing:** Python 3.x (or VS Code Live Server). *Note: IndexedDB and Service Workers require `http://localhost` and will not work if opened directly via `file://`.*
 
 ### 4.2 Download / Clone
 
-    git clone [https://github.com/xyllannel-bit/sarisafe-app.git](https://github.com/xyllannel-bit/sarisafe-app.git)
+  git clone https://github.com/xyllannel-bit/sarisafe-app.git
     cd sarisafe-app
 
 ### 4.3 Configuration (Local vs. Cloud Sync)
-* **Offline / Local Mode (Zero Setup Required):** SariSafe works out of the box with no `.env` file or server configuration. All records are stored locally in the browser's `SariSafeDB` IndexedDB database.
-* **Optional Supabase Cloud Backend Setup:** The repository includes `supabase-setup.sql` containing the complete PostgreSQL table definitions, Row-Level Security (RLS) policies, immutability triggers, and the `sarisafe_tender_sync` RPC function. To connect your own Supabase instance:
+- **Offline / Local Mode (Zero Setup Required):** SariSafe works out of the box with no `.env` file or server configuration. All records are stored locally in the browser's `SariSafeDB` IndexedDB database.
+- **Optional Supabase Cloud Backend Setup:** The repository includes `supabase-setup.sql` containing the complete PostgreSQL table definitions, Row-Level Security (RLS) policies, immutability triggers, and the `sarisafe_tender_sync` RPC function. To connect your own Supabase instance:
   1. Create a new Supabase project and run `supabase-setup.sql` in the **SQL Editor**.
   2. Create a Store Owner user in **Authentication -> Users** and link their `user_id` with `role = 'owner'` in `public.sarisafe_profiles` (see Step 15 of `supabase-setup.sql`).
   3. Replace `SUPABASE_URL` and `SUPABASE_KEY` (publishable anon key) in `index.html` with your project's public credentials. *Never place a Supabase `service_role` key in client-side code.*
@@ -122,9 +123,12 @@ SariSafe uses a structured manual and browser DevTools test suite documented in 
 ---
 
 ## 9. Known Limitations
-* **Last-5-Digit Reference Matching Default:** To speed up counter operations during peak store hours, `REF_DIGITS` is configured to `5` (matching the last 5 digits of the 13-digit GCash reference number). While rare collisions between different receipts sharing the same last 5 digits are handled via the *"Different receipt – continue"* override option, full 13-digit verification requires manual visual comparison of the customer's GCash screen.
+- **Last-5-digit reference matching (`REF_DIGITS=5`):** The system matches only the last 5 digits of the 13-digit GCash reference number to speed up counter verification. Rare collisions with different receipts sharing the same last 5 digits require using the *"Different receipt – continue"* override and manually checking the full 13-digit number on the customer's GCash screen.
+  
 * **No Direct GCash / e-Wallet API Integration:** In accordance with project scope exclusions (no official GCash partner merchant API access), SariSafe records and verifies reference numbers entered at the counter rather than automatically querying GCash servers or transferring funds.
+  
 * **Single-Store Scope:** The database schema and UI are tailored for a single store (`Fuentez Store`) and do not include multi-branch inventory or *utang* (credit) ledger tracking.
+  
 * **Browser Storage Volatility if Cleared Manually:** Because offline records live in browser IndexedDB (`SariSafeDB`), clearing browser site data on a device that has not synced to Supabase or exported a JSON backup will erase un-synced local records.
 
 ---
