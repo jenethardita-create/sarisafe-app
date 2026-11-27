@@ -109,15 +109,20 @@ dialog.view{max-width:520px;max-height:90vh;overflow:auto}
 .ts{white-space:nowrap}
 
 /* Auto-popup transaction receipt */
-.rcpt-head{text-align:center;padding-bottom:12px;margin-bottom:12px;border-bottom:1.5px dashed #cbd5e1}
-.rcpt-ok{display:inline-block;background:#dcfce7;color:#166534;font-weight:700;font-size:.82rem;padding:4px 12px;border-radius:999px}
-.rcpt-body{display:flex;flex-direction:column;gap:8px}
-.rcpt-row{display:flex;justify-content:space-between;align-items:baseline;gap:12px;font-size:.95rem;padding-bottom:6px;border-bottom:1px solid #f1f5f9}
-.rcpt-row span:first-child{color:#64748b}
-.rcpt-row span:last-child{text-align:right}
-.rcpt-sig{margin-top:12px;padding-top:10px;border-top:1.5px dashed #cbd5e1;text-align:center}
-.rcpt-sig .note{display:block;margin-bottom:4px}
-.rcpt-sig .bigsig{max-height:110px;object-fit:contain;margin-top:4px}
+dialog:has(.rcpt-head){background:linear-gradient(180deg,#eef5ff 0%,#ffffff 100%);border:1.5px solid #cfe0ff;padding:0;overflow:hidden}
+.rcpt-head{background:linear-gradient(135deg,#0066ff,#0040c8);color:#fff;text-align:center;padding:20px 18px 18px;margin-bottom:0;border-bottom:2px dashed #93c5fd}
+.rcpt-head h3,.rcpt-head h2{color:#fff;margin:8px 0 2px}
+.rcpt-head .note{color:#dbe9ff}
+.rcpt-ok{display:inline-block;background:#dcfce7;color:#166534;font-weight:700;font-size:.82rem;padding:4px 14px;border-radius:999px;box-shadow:0 2px 8px #0002}
+.rcpt-body{display:flex;flex-direction:column;gap:0;background:#fff;margin:14px 16px 0;padding:8px 14px;border-radius:14px;border:1px solid #dce4f2;box-shadow:0 2px 10px #0b3a8a0d}
+.rcpt-row{display:flex;justify-content:space-between;align-items:baseline;gap:12px;font-size:.94rem;padding:8px 0;border-bottom:1px solid #f1f5f9}
+.rcpt-row:last-child{border-bottom:none}
+.rcpt-row span:first-child{color:#64748b;font-weight:500}
+.rcpt-row span:last-child{text-align:right;color:var(--ink)}
+.rcpt-sig{margin:12px 16px 0;padding:12px;background:#f8fbff;border:1.5px dashed #b9cdee;border-radius:14px;text-align:center}
+.rcpt-sig .note{display:block;margin-bottom:6px;font-weight:600;color:var(--blue2)}
+.rcpt-sig .bigsig{max-height:110px;object-fit:contain;margin-top:4px;background:#fff;border:1px solid #dce4f2;border-radius:10px;padding:4px}
+dialog:has(.rcpt-head) .btns{padding:12px 16px 18px;margin-top:0;justify-content:center}
 
 /* Pending queue & Log filter pills */
 .pend-card{border-left:4px solid #f59e0b;background:#fffbeb}
