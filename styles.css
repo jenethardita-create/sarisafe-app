@@ -1,5 +1,8 @@
 /* SariSafe styles – GCash-inspired look. Linked from index.html */
-:root{--ink:#1c2b4a;--mut:#667394;--bg:#eef3fb;--card:#fff;--line:#dce4f2;--blue:#007cff;--blue2:#0057d9;--red:#e5383b;--grn:#12a150;--amb:#c77700;--sh:0 4px 16px #0b3a8a14}
+:root{--ink:#1c2b4a;--mut:#667394;
+      --bg:#eef3fb;--card:#fff;
+      --line:#dce4f2;--blue:#007cff;
+      --blue2:#0057d9;--red:#e5383b;--grn:#12a150;--amb:#c77700;--sh:0 4px 16px #0b3a8a14}
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 body{margin:0;padding-bottom:88px;font:16px/1.45 "Segoe UI",system-ui,-apple-system,Roboto,sans-serif;background:var(--bg);color:var(--ink)}
 header{background:linear-gradient(135deg,#0066ff,#0040c8);color:#fff;padding:18px 16px 56px;display:flex;flex-wrap:wrap;gap:8px;align-items:center;justify-content:space-between}
