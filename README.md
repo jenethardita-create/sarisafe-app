@@ -132,3 +132,11 @@ SariSafe uses a structured manual and browser DevTools test suite documented in 
 ## 10. Final Version
 * **Repository:** [https://github.com/xyllannel-bit/sarisafe-app.git](https://github.com/xyllannel-bit/sarisafe-app.git)
 * **Live URL:** [https://sarisafe.vercel.app/](https://sarisafe.vercel.app/)
+
+---
+
+
+## 11. Store Tender Daily Quick Checklist
+* **Before Shift Start:** Verify the offline indicator shows `Ready` and confirm opening physical cash on hand matches the previous shift's Z-reading.
+* **During Transactions:** Always enter the exact GCash reference number before releasing cash or completing a Cash-In transfer so duplicate detection triggers immediately.
+* **End of Shift:** Export a CSV backup to the local device before running shift reconciliation and syncing pending records online.
