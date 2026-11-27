@@ -149,16 +149,46 @@ dialog.pin{max-width:340px;text-align:center;padding:24px 20px}
 @keyframes shake{20%,60%{transform:translateX(-8px)}40%,80%{transform:translateX(8px)}}
 @media(prefers-reduced-motion:reduce){*{animation-duration:.01ms!important;transition:none!important}}
 
-/* Transaction log + detail view */
-.pill{padding:2px 10px;border-radius:99px;font-size:.78rem;font-weight:600;white-space:nowrap}
-.pill.in{background:#e3f6ec;color:var(--grn)}.pill.out{background:#e6f1ff;color:var(--blue2)}
-dialog.view{max-width:520px;max-height:90vh;overflow:auto}
-.dl{margin:6px 0}.detail h3{margin:14px 0 6px}
-.bigsig{width:100%;border:1px solid var(--line);border-radius:10px;background:#fff}
-#printArea{display:none}
-@media print{body>*:not(#printArea){display:none!important}#printArea{display:block;padding:20px;font-family:Arial,sans-serif;color:#000}}
-.chip{font-size:.78rem;background:#fff3;padding:3px 12px;border-radius:99px;font-weight:600}
+/* ==========================================================================
+   POS TRANSACTION LOG HEADER BANNER
+   ========================================================================== */
+.log-head {
+  background: linear-gradient(135deg, #0066ff, #0040c8);
+  color: #fff;
+  border-radius: 18px;
+  padding: 16px 18px;
+  margin-bottom: 12px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  box-shadow: 0 6px 20px #0057d933;
+  border: 1.5px solid #3b82f6;
+}
 
+.log-head h2 {
+  color: #fff;
+  font-size: 1.15rem;
+  font-weight: 800;
+  margin: 0 0 2px;
+  letter-spacing: .2px;
+}
+
+.log-head .note {
+  color: #dbe9ff;
+  margin: 0;
+  font-weight: 600;
+}
+
+.log-head .chip {
+  background: #fff;
+  color: var(--blue2);
+  font-weight: 800;
+  font-size: .8rem;
+  padding: 5px 14px;
+  box-shadow: 0 2px 8px #0002;
+}
 /* Transaction history grouped by day */
 .day{border:1px solid var(--line);border-radius:14px;margin:10px 0;background:#fff;overflow:hidden}
 .day>summary{cursor:pointer;display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;padding:12px 14px;background:#eef5ff;font-weight:700;list-style:none}
