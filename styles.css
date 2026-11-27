@@ -3,10 +3,14 @@
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 body{margin:0;padding-bottom:88px;font:16px/1.45 "Segoe UI",system-ui,-apple-system,Roboto,sans-serif;background:var(--bg);color:var(--ink)}
 header{background:linear-gradient(135deg,#0066ff,#0040c8);color:#fff;padding:18px 16px 56px;display:flex;flex-wrap:wrap;gap:8px;align-items:center;justify-content:space-between}
+/*header*/
 header h1{font-size:1.3rem;margin:0}header .note{color:#dbe9ff}
-header .btn{background:#fff;color:#0057d9}
 .hbtns{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.hbtns .btn{background:#fff;color:#0057d9;transition:background .15s,color .15s,transform .15s,box-shadow .15s}
+.hbtns .btn:hover{background:#e6f1ff;color:#0040c8;transform:translateY(-1px);box-shadow:0 4px 12px #0003}
+.hbtns .btn:active{transform:translateY(0) scale(.97)}
 .badge{font-size:.75rem;padding:3px 10px;border-radius:99px;background:#fff3;margin-left:8px;font-weight:600}
+
 nav{position:fixed;left:0;right:0;bottom:0;z-index:5;display:flex;justify-content:space-around;background:#fff;border-top:1px solid var(--line);padding:6px 4px calc(6px + env(safe-area-inset-bottom));box-shadow:0 -4px 20px #0b3a8a14}
 nav button{flex:1;max-width:110px;border:0;background:none;display:flex;flex-direction:column;align-items:center;gap:2px;padding:6px 2px;border-radius:12px;font:inherit;font-size:.72rem;color:var(--mut);cursor:pointer;transition:color .15s,background .15s}
 nav svg{width:24px;height:24px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
