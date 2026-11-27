@@ -45,11 +45,71 @@ input:focus,select:focus,textarea:focus,button:focus-visible,canvas:focus-visibl
 #refInd.dup{background:#fde8e8;color:var(--red);font-weight:700;animation:shake .4s}
 #ref{font-size:1.35rem;letter-spacing:2px;font-variant-numeric:tabular-nums;font-weight:600}
 canvas{width:100%;height:150px;border:2px dashed #b9cdee;border-radius:14px;touch-action:none;background:#fbfdff}
-.seg{display:flex;gap:10px}
-.seg label{position:relative;flex:1;margin:0;border:2px solid var(--line);border-radius:14px;padding:12px;text-align:center;cursor:pointer;color:var(--ink);font-weight:700;transition:.15s}
-.seg label:has(input:checked){border-color:var(--blue);background:#e6f1ff;color:var(--blue)}
-.seg label:has(input:focus-visible){outline:3px solid #007cff44}
-.seg input{position:absolute;opacity:0;width:0;height:0}
+.seg {
+  display: flex;
+  gap: 10px;
+}
+
+.seg label {
+  position: relative;
+  flex: 1;
+  margin: 0;
+  border: 2px solid var(--line);
+  border-radius: 14px;
+  padding: 12px;
+  text-align: center;
+  cursor: pointer;
+  background: #fff;
+  color: var(--ink);
+  font-weight: 700;
+  transition: background .15s, color .15s, border-color .15s, transform .15s, box-shadow .15s;
+}
+
+/* Hover effect matching .hbtns .btn */
+.seg label:hover {
+  background: #e6f1ff;
+  color: #0040c8;
+  border-color: var(--blue);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px #0003;
+}
+
+.seg label:active {
+  transform: translateY(0) scale(.97);
+}
+
+/* Selected / Chosen state */
+.seg label:has(input:checked) {
+  border-color: var(--blue);
+  background: var(--blue);
+  color: #fff;
+  box-shadow: 0 4px 12px #007cff44;
+}
+
+/* Optional: Distinct Green (Cash In) & Red/Blue (Cash Out) when chosen */
+/* Uncomment below if you want Cash In = Green and Cash Out = Red/Blue instead of both Blue:
+.seg label:first-child:has(input:checked) {
+  border-color: var(--grn);
+  background: var(--grn);
+  color: #fff;
+}
+.seg label:last-child:has(input:checked) {
+  border-color: var(--blue2);
+  background: var(--blue2);
+  color: #fff;
+}
+*/
+
+.seg label:has(input:focus-visible) {
+  outline: 3px solid #007cff44;
+}
+
+.seg input {
+  position: absolute;
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
 table{width:100%;border-collapse:collapse;font-size:.88rem}
 th,td{text-align:left;padding:8px;border-bottom:1px solid var(--line);vertical-align:top}
 th{color:var(--mut);font-weight:600}
