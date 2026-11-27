@@ -171,21 +171,157 @@ dialog.view{max-width:520px;max-height:90vh;overflow:auto}
 .day .tw{padding:0 8px 8px}
 .ts{white-space:nowrap}
 
-/* Auto-popup transaction receipt */
-dialog:has(.rcpt-head){background:linear-gradient(180deg,#eef5ff 0%,#ffffff 100%);border:1.5px solid #cfe0ff;padding:0;overflow:hidden}
-.rcpt-head{background:linear-gradient(135deg,#0066ff,#0040c8);color:#fff;text-align:center;padding:20px 18px 18px;margin-bottom:0;border-bottom:2px dashed #93c5fd}
-.rcpt-head h3,.rcpt-head h2{color:#fff;margin:8px 0 2px}
-.rcpt-head .note{color:#dbe9ff}
-.rcpt-ok{display:inline-block;background:#dcfce7;color:#166534;font-weight:700;font-size:.82rem;padding:4px 14px;border-radius:999px;box-shadow:0 2px 8px #0002}
-.rcpt-body{display:flex;flex-direction:column;gap:0;background:#fff;margin:14px 16px 0;padding:8px 14px;border-radius:14px;border:1px solid #dce4f2;box-shadow:0 2px 10px #0b3a8a0d}
-.rcpt-row{display:flex;justify-content:space-between;align-items:baseline;gap:12px;font-size:.94rem;padding:8px 0;border-bottom:1px solid #f1f5f9}
-.rcpt-row:last-child{border-bottom:none}
-.rcpt-row span:first-child{color:#64748b;font-weight:500}
-.rcpt-row span:last-child{text-align:right;color:var(--ink)}
-.rcpt-sig{margin:12px 16px 0;padding:12px;background:#f8fbff;border:1.5px dashed #b9cdee;border-radius:14px;text-align:center}
-.rcpt-sig .note{display:block;margin-bottom:6px;font-weight:600;color:var(--blue2)}
-.rcpt-sig .bigsig{max-height:110px;object-fit:contain;margin-top:4px;background:#fff;border:1px solid #dce4f2;border-radius:10px;padding:4px}
-dialog:has(.rcpt-head) .btns{padding:12px 16px 18px;margin-top:0;justify-content:center}
+/* ==========================================================================
+   AUTO-POPUP TRANSACTION RECEIPT (BOLD & CRISP BORDERS)
+   ========================================================================== */
+dialog:has(.rcpt-head),
+dialog:has(.rcpt-body) {
+  background: #f4f8ff;
+  border: 2.5px solid #0057d9;
+  border-radius: 22px;
+  padding: 0;
+  max-width: 420px;
+  max-height: 92vh;
+  overflow-y: auto;
+  box-shadow: 0 16px 40px #0b2a5a44;
+  animation: rcptPop .22s cubic-bezier(.16, 1, .3, 1);
+}
+
+@keyframes rcptPop {
+  from { opacity: 0; transform: translateY(14px) scale(.96); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+/* Blue Header Banner */
+.rcpt-head {
+  background: linear-gradient(135deg, #0066ff, #0040c8);
+  color: #fff;
+  text-align: center;
+  padding: 18px 16px 16px;
+  border-bottom: 2.5px dashed #93c5fd;
+}
+
+.rcpt-head h3,
+.rcpt-head h2 {
+  color: #fff;
+  font-size: 1.25rem;
+  font-weight: 800;
+  margin: 8px 0 2px;
+  letter-spacing: .3px;
+}
+
+.rcpt-head .note {
+  color: #dbe9ff;
+  font-weight: 600;
+}
+
+/* "Transaction Saved" Pill */
+.rcpt-ok {
+  display: inline-block;
+  background: #dcfce7;
+  color: #14532d;
+  border: 1.5px solid #22c55e;
+  font-weight: 800;
+  font-size: .82rem;
+  padding: 4px 14px;
+  border-radius: 999px;
+  box-shadow: 0 2px 8px #0003;
+}
+
+/* Receipt Details Box */
+.rcpt-body {
+  display: flex;
+  flex-direction: column;
+  background: #fff;
+  margin: 14px 14px 0;
+  padding: 6px 14px;
+  border-radius: 14px;
+  border: 2px solid #94b8e8;
+  box-shadow: 0 4px 12px #0b3a8a12;
+}
+
+/* Individual Rows */
+.rcpt-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  font-size: .92rem;
+  padding: 7px 0;
+  border-bottom: 1.5px solid #cbd5e1;
+}
+
+.rcpt-row:last-child {
+  border-bottom: none;
+}
+
+/* Left Labels */
+.rcpt-row span:first-child {
+  color: #475569;
+  font-weight: 600;
+}
+
+/* Right Values — Bold & Crisp */
+.rcpt-row span:last-child {
+  text-align: right;
+  color: var(--ink);
+  font-weight: 700;
+}
+
+/* Highlight the Total Row (6th row in your screenshot) */
+.rcpt-row:nth-child(6) {
+  background: #eef5ff;
+  margin: 2px -8px;
+  padding: 8px 8px;
+  border-radius: 8px;
+  border-bottom: 1.5px solid #93c5fd;
+}
+
+.rcpt-row:nth-child(6) span:first-child {
+  color: var(--blue2);
+  font-weight: 800;
+}
+
+.rcpt-row:nth-child(6) span:last-child {
+  color: var(--blue2);
+  font-size: 1.12rem;
+  font-weight: 800;
+}
+
+/* Signature Box */
+.rcpt-sig {
+  margin: 12px 14px 0;
+  padding: 10px 12px;
+  background: #fff;
+  border: 2px dashed #6495ed;
+  border-radius: 14px;
+  text-align: center;
+}
+
+.rcpt-sig .note {
+  display: block;
+  margin-bottom: 6px;
+  font-weight: 700;
+  color: var(--blue2);
+}
+
+.rcpt-sig .bigsig {
+  max-height: 95px;
+  object-fit: contain;
+  margin-top: 2px;
+  background: #f8fbff;
+  border: 1.5px solid #94b8e8;
+  border-radius: 10px;
+  padding: 4px;
+}
+
+/* Bottom Action Buttons */
+dialog:has(.rcpt-head) .btns,
+dialog:has(.rcpt-body) .btns {
+  padding: 12px 14px 16px;
+  margin-top: 0;
+  justify-content: center;
+}
 
 /* Pending queue & Log filter pills */
 .pend-card{border-left:4px solid #f59e0b;background:#fffbeb}
