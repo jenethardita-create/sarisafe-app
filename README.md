@@ -132,3 +132,4 @@ SariSafe uses a structured manual and browser DevTools test suite documented in 
 ## 10. Final Version
 * **Repository:** [https://github.com/xyllannel-bit/sarisafe-app.git](https://github.com/xyllannel-bit/sarisafe-app.git)
 * **Live URL:** [https://sarisafe.vercel.app/](https://sarisafe.vercel.app/)
+* - **Final commit ID:** `3b91e04`   **Date:** `November, 27, 26`
