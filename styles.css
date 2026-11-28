@@ -357,3 +357,23 @@ dialog:has(.rcpt-body) .btns {
 .pend-card{border-left:4px solid #f59e0b;background:#fffbeb}
 .pend-badge{background:#f59e0b;color:#fff;margin-left:6px}
 #stTabs button.on{background:#007cff;color:#fff;border-color:#007cff}
+
+/* Print Layout for Shift Z-Reading & Transaction Logs */
+@media print {
+  body {
+    background: #fff !important;
+    color: #000 !important;
+  }
+
+  button,
+  nav,
+  .no-print {
+    display: none !important;
+  }
+
+  table,
+  .card {
+    box-shadow: none !important;
+    border: 1px solid #ccc !important;
+  }
+}
